@@ -1,0 +1,29 @@
+# Build output
+/build/
+/cmake-build-*/
+
+# CMake generated files that may be created outside the ignored build dirs
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Local IDE/editor state
+/.idea/
+.vscode/
+*.swp
+*~
+
+# Native binaries and transient runtime files
+DISPatch
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.exe
+*.log
