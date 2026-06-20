@@ -41,6 +41,7 @@
 #include <QtCore/QTime>
 #include <QtCore/QTimer>
 
+#include <array>
 #include <cstdint>
 
 namespace {
@@ -48,6 +49,55 @@ namespace {
 constexpr quint8 DisVersion = 6;
 constexpr quint8 SimManagementFamily = 5;
 constexpr quint16 BroadcastEntityIdValue = 65535;
+constexpr quint8 MaxExerciseId = 255;
+constexpr quint8 MaxUint8Value = 255;
+constexpr quint16 MaxUdpPort = 65535;
+constexpr int MaxActionId = 2147483647;
+constexpr int SecondsPerHour = 3600;
+constexpr int SecondsPerMinute = 60;
+constexpr int MillisecondsPerSecond = 1000;
+constexpr quint64 MillisecondsPerDay = 86400000ULL;
+constexpr int DisTimestampFractionBits = 31;
+constexpr qint64 DisTimeUnitsPerSecond = 65536LL;
+constexpr int BitsPerByte = 8;
+constexpr int ThreeByteShift = 24;
+constexpr int TwoByteShift = 16;
+constexpr int DisHeaderLength = 12;
+constexpr int EntityIdByteLength = 6;
+constexpr int EntityIdApplicationOffset = 2;
+constexpr int EntityIdEntityOffset = 4;
+constexpr int OriginEntityOffset = 12;
+constexpr int TargetEntityOffset = 18;
+constexpr int RequestIdOffset = 24;
+constexpr int RequestIdByteLength = 4;
+constexpr int MinRequestPduLength = RequestIdOffset + RequestIdByteLength;
+constexpr int ActionResponseStatusOffset = 28;
+constexpr int AcknowledgeFlagOffset = 24;
+constexpr int AcknowledgeResponseFlagOffset = 26;
+constexpr int AcknowledgeRequestIdOffset = 28;
+constexpr int AcknowledgePduLength = 32;
+constexpr int ActionRequestPduLength = 40;
+constexpr int StartResumePduLength = 44;
+constexpr int StopFreezePduLength = 36;
+constexpr int ActionResponsePduLength = 40;
+constexpr int PduVersionOffset = 0;
+constexpr int PduExerciseIdOffset = 1;
+constexpr int PduTypeOffset = 2;
+constexpr int PduFamilyOffset = 3;
+constexpr int PduLengthOffset = 8;
+constexpr int WindowMargin = 14;
+constexpr int WindowBottomMargin = 10;
+constexpr int StandardSpacing = 12;
+constexpr int ThemeComboWidth = 140;
+constexpr int IdentityStretchColumn = 5;
+constexpr int TestFederateMinimumWidth = 260;
+constexpr int TestFederateStretchColumn = 4;
+constexpr int ResponseTableColumnCount = 5;
+constexpr int MaxLogBlocks = 1000;
+constexpr int DefaultWindowWidth = 980;
+constexpr int DefaultWindowHeight = 720;
+constexpr int RebindIntervalMilliseconds = 1000;
+constexpr int StateButtonMinimumHeight = 36;
 
 enum PduType : quint8 {
     StartResumePdu = 13,
@@ -57,7 +107,7 @@ enum PduType : quint8 {
     ActionResponsePdu = 17
 };
 
-enum class SimulationState {
+enum class SimulationState : quint8 {
     Startup,
     Standby,
     Operate,
@@ -84,7 +134,7 @@ struct DisConfig {
     quint8 standbyFrozenBehavior = 0;
 };
 
-enum class Theme {
+enum class Theme : quint8 {
     Dark,
     Light,
     Gruvbox
@@ -120,7 +170,7 @@ struct StopFreezeReasonOption {
     const char *label;
 };
 
-constexpr StopFreezeReasonOption StopFreezeReasonOptions[] = {
+constexpr std::array<StopFreezeReasonOption, 9> StopFreezeReasonOptions{{
     {0, "other", "Other"},
     {1, "recess", "Recess"},
     {2, "termination", "Termination"},
@@ -130,18 +180,88 @@ constexpr StopFreezeReasonOption StopFreezeReasonOptions[] = {
     {6, "stop_for_reset", "Stop For Reset"},
     {7, "stop_for_restart", "Stop For Restart"},
     {8, "abort_training_return_to_tactical_operations", "Abort Training Return To Tactical Operations"},
-};
+}};
 
-quint32 disTimestamp()
+auto rootConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("theme"),
+                                  QStringLiteral("network"),
+                                  QStringLiteral("dis"),
+                                  QStringLiteral("commands"),
+                                  QStringLiteral("testFederate")};
+    return keys;
+}
+
+auto networkConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("destinationAddress"),
+                                  QStringLiteral("destinationPort"),
+                                  QStringLiteral("listenAddress"),
+                                  QStringLiteral("listenPort"),
+                                  QStringLiteral("multicastGroupAddress"),
+                                  QStringLiteral("multicastInterfaceName"),
+                                  QStringLiteral("shareAddress"),
+                                  QStringLiteral("reuseAddress"),
+                                  QStringLiteral("joinMulticast"),
+                                  QStringLiteral("multicastLoopback")};
+    return keys;
+}
+
+auto disConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("exerciseId"),
+                                  QStringLiteral("managerId"),
+                                  QStringLiteral("targetId")};
+    return keys;
+}
+
+auto entityIdConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("site"),
+                                  QStringLiteral("application"),
+                                  QStringLiteral("entity")};
+    return keys;
+}
+
+auto commandsConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("startup"),
+                                  QStringLiteral("standby"),
+                                  QStringLiteral("shutdown")};
+    return keys;
+}
+
+auto actionConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("actionId")};
+    return keys;
+}
+
+auto standbyConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("reason"),
+                                  QStringLiteral("frozenBehavior")};
+    return keys;
+}
+
+auto testFederateConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("enabled"),
+                                  QStringLiteral("entityId")};
+    return keys;
+}
+
+auto disTimestamp() -> quint32
 {
     const auto now = QTime::currentTime();
     const auto milliseconds =
-        static_cast<quint32>((now.hour() * 3600 + now.minute() * 60 + now.second()) * 1000
-                             + now.msec());
-    return static_cast<quint32>((static_cast<quint64>(milliseconds) << 31) / 86400000ULL);
+        static_cast<quint32>(((now.hour() * SecondsPerHour + now.minute() * SecondsPerMinute + now.second())
+                              * MillisecondsPerSecond) + now.msec());
+    return static_cast<quint32>((static_cast<quint64>(milliseconds) << DisTimestampFractionBits)
+                                / MillisecondsPerDay);
 }
 
-QString stateName(SimulationState state)
+auto stateName(SimulationState state) -> QString
 {
     switch (state) {
     case SimulationState::Startup:
@@ -157,7 +277,7 @@ QString stateName(SimulationState state)
     return QStringLiteral("Unknown");
 }
 
-QString stopFreezeReasonLabel(quint8 reason)
+auto stopFreezeReasonLabel(quint8 reason) -> QString
 {
     for (const auto &option : StopFreezeReasonOptions) {
         if (option.value == reason) {
@@ -168,7 +288,7 @@ QString stopFreezeReasonLabel(quint8 reason)
     return QStringLiteral("Reason %1").arg(reason);
 }
 
-QString pduTypeName(quint8 pduType)
+auto pduTypeName(quint8 pduType) -> QString
 {
     switch (pduType) {
     case StartResumePdu:
@@ -191,13 +311,13 @@ void writeEntityId(QDataStream &out, const EntityId &entityId)
     out << entityId.site << entityId.application << entityId.entity;
 }
 
-bool entityIdsMatch(const EntityId &left, const EntityId &right)
+auto entityIdsMatch(const EntityId &left, const EntityId &right) -> bool
 {
     return left.site == right.site && left.application == right.application
         && left.entity == right.entity;
 }
 
-QString entityIdString(const EntityId &entityId)
+auto entityIdString(const EntityId &entityId) -> QString
 {
     return QStringLiteral("%1:%2:%3")
         .arg(entityId.site)
@@ -205,7 +325,7 @@ QString entityIdString(const EntityId &entityId)
         .arg(entityId.entity);
 }
 
-QByteArray makeHeader(const DisConfig &config, PduType pduType, quint16 length)
+auto makeHeader(const DisConfig &config, PduType pduType, quint16 length) -> QByteArray
 {
     QByteArray bytes;
     QDataStream out(&bytes, QIODevice::WriteOnly);
@@ -224,7 +344,8 @@ void appendRealWorldTime(QDataStream &out)
 {
     const auto now = QDateTime::currentDateTimeUtc();
     out << static_cast<quint32>(now.date().toJulianDay());
-    out << static_cast<quint32>((now.time().msecsSinceStartOfDay() * 65536LL) / 1000LL);
+    out << static_cast<quint32>((now.time().msecsSinceStartOfDay() * DisTimeUnitsPerSecond)
+                                / MillisecondsPerSecond);
 }
 
 void appendSimulationTime(QDataStream &out)
@@ -232,9 +353,9 @@ void appendSimulationTime(QDataStream &out)
     appendRealWorldTime(out);
 }
 
-QByteArray makeStartResumePdu(const DisConfig &config, quint32 requestId)
+auto makeStartResumePdu(const DisConfig &config, quint32 requestId) -> QByteArray
 {
-    constexpr quint16 length = 44;
+    constexpr quint16 length = StartResumePduLength;
     QByteArray bytes = makeHeader(config, StartResumePdu, length);
     QDataStream out(&bytes, QIODevice::Append);
     out.setByteOrder(QDataStream::BigEndian);
@@ -248,9 +369,9 @@ QByteArray makeStartResumePdu(const DisConfig &config, quint32 requestId)
     return bytes;
 }
 
-QByteArray makeStopFreezePdu(const DisConfig &config, quint32 requestId)
+auto makeStopFreezePdu(const DisConfig &config, quint32 requestId) -> QByteArray
 {
-    constexpr quint16 length = 36;
+    constexpr quint16 length = StopFreezePduLength;
 
     QByteArray bytes = makeHeader(config, StopFreezePdu, length);
     QDataStream out(&bytes, QIODevice::Append);
@@ -267,9 +388,9 @@ QByteArray makeStopFreezePdu(const DisConfig &config, quint32 requestId)
     return bytes;
 }
 
-QByteArray makeActionRequestPdu(const DisConfig &config, quint32 requestId, SimulationState state)
+auto makeActionRequestPdu(const DisConfig &config, quint32 requestId, SimulationState state) -> QByteArray
 {
-    constexpr quint16 length = 40;
+    constexpr quint16 length = ActionRequestPduLength;
     const quint32 actionId =
         state == SimulationState::Startup ? config.startupActionId : config.shutdownActionId;
 
@@ -287,9 +408,9 @@ QByteArray makeActionRequestPdu(const DisConfig &config, quint32 requestId, Simu
     return bytes;
 }
 
-QByteArray makeAcknowledgePdu(const DisConfig &config, quint32 requestId, PduType requestType)
+auto makeAcknowledgePdu(const DisConfig &config, quint32 requestId, PduType requestType) -> QByteArray
 {
-    constexpr quint16 length = 32;
+    constexpr quint16 length = AcknowledgePduLength;
     constexpr quint16 ableToComply = 1;
     const quint16 acknowledgeFlag = requestType == StartResumePdu ? 3 : 4;
 
@@ -306,9 +427,9 @@ QByteArray makeAcknowledgePdu(const DisConfig &config, quint32 requestId, PduTyp
     return bytes;
 }
 
-QByteArray makeActionResponsePdu(const DisConfig &config, quint32 requestId)
+auto makeActionResponsePdu(const DisConfig &config, quint32 requestId) -> QByteArray
 {
-    constexpr quint16 length = 40;
+    constexpr quint16 length = ActionResponsePduLength;
     constexpr quint32 requestComplete = 1;
 
     QByteArray bytes = makeHeader(config, ActionResponsePdu, length);
@@ -325,55 +446,55 @@ QByteArray makeActionResponsePdu(const DisConfig &config, quint32 requestId)
     return bytes;
 }
 
-quint16 readU16(const QByteArray &bytes, int offset)
+auto readU16(const QByteArray &bytes, int offset) -> quint16
 {
     if (offset + 2 > bytes.size()) {
         return 0;
     }
 
-    return static_cast<quint16>((static_cast<quint8>(bytes[offset]) << 8)
+    return static_cast<quint16>((static_cast<quint8>(bytes[offset]) << BitsPerByte)
                                | static_cast<quint8>(bytes[offset + 1]));
 }
 
-quint32 readU32(const QByteArray &bytes, int offset)
+auto readU32(const QByteArray &bytes, int offset) -> quint32
 {
     if (offset + 4 > bytes.size()) {
         return 0;
     }
 
-    return (static_cast<quint32>(static_cast<quint8>(bytes[offset])) << 24)
-        | (static_cast<quint32>(static_cast<quint8>(bytes[offset + 1])) << 16)
-        | (static_cast<quint32>(static_cast<quint8>(bytes[offset + 2])) << 8)
+    return (static_cast<quint32>(static_cast<quint8>(bytes[offset])) << ThreeByteShift)
+        | (static_cast<quint32>(static_cast<quint8>(bytes[offset + 1])) << TwoByteShift)
+        | (static_cast<quint32>(static_cast<quint8>(bytes[offset + 2])) << BitsPerByte)
         | static_cast<quint32>(static_cast<quint8>(bytes[offset + 3]));
 }
 
-EntityId readEntityId(const QByteArray &bytes, int offset)
+auto readEntityId(const QByteArray &bytes, int offset) -> EntityId
 {
     return EntityId{readU16(bytes, offset),
-                    readU16(bytes, offset + 2),
-                    readU16(bytes, offset + 4)};
+                    readU16(bytes, offset + EntityIdApplicationOffset),
+                    readU16(bytes, offset + EntityIdEntityOffset)};
 }
 
-QString entityIdString(const QByteArray &bytes, int offset)
+auto entityIdString(const QByteArray &bytes, int offset) -> QString
 {
     return QStringLiteral("%1:%2:%3")
         .arg(readU16(bytes, offset))
-        .arg(readU16(bytes, offset + 2))
-        .arg(readU16(bytes, offset + 4));
+        .arg(readU16(bytes, offset + EntityIdApplicationOffset))
+        .arg(readU16(bytes, offset + EntityIdEntityOffset));
 }
 
-QString responseSummary(const QByteArray &bytes)
+auto responseSummary(const QByteArray &bytes) -> QString
 {
-    if (bytes.size() < 12) {
+    if (bytes.size() < DisHeaderLength) {
         return QStringLiteral("Received %1 byte datagram that is too short for a DIS header")
             .arg(bytes.size());
     }
 
-    const quint8 version = static_cast<quint8>(bytes[0]);
-    const quint8 exerciseId = static_cast<quint8>(bytes[1]);
-    const quint8 pduType = static_cast<quint8>(bytes[2]);
-    const quint8 family = static_cast<quint8>(bytes[3]);
-    const quint16 pduLength = readU16(bytes, 8);
+    const auto version = static_cast<quint8>(bytes[PduVersionOffset]);
+    const auto exerciseId = static_cast<quint8>(bytes[PduExerciseIdOffset]);
+    const auto pduType = static_cast<quint8>(bytes[PduTypeOffset]);
+    const auto family = static_cast<quint8>(bytes[PduFamilyOffset]);
+    const quint16 pduLength = readU16(bytes, PduLengthOffset);
     QString summary = QStringLiteral("DIS%1 exercise %2 %3, family %4, length %5")
                           .arg(version)
                           .arg(exerciseId)
@@ -385,30 +506,31 @@ QString responseSummary(const QByteArray &bytes)
         return summary + QStringLiteral(" (non-Simulation Management)");
     }
 
-    if (pduType == AcknowledgePdu && bytes.size() >= 32) {
+    if (pduType == AcknowledgePdu && bytes.size() >= AcknowledgePduLength) {
         summary += QStringLiteral("; origin %1, target %2, ack flag %3, response flag %4, request %5")
-                       .arg(entityIdString(bytes, 12))
-                       .arg(entityIdString(bytes, 18))
-                       .arg(readU16(bytes, 24))
-                       .arg(readU16(bytes, 26))
-                       .arg(readU32(bytes, 28));
-    } else if (pduType == ActionResponsePdu && bytes.size() >= 40) {
+                       .arg(entityIdString(bytes, OriginEntityOffset))
+                       .arg(entityIdString(bytes, TargetEntityOffset))
+                       .arg(readU16(bytes, AcknowledgeFlagOffset))
+                       .arg(readU16(bytes, AcknowledgeResponseFlagOffset))
+                       .arg(readU32(bytes, AcknowledgeRequestIdOffset));
+    } else if (pduType == ActionResponsePdu && bytes.size() >= ActionResponsePduLength) {
         summary += QStringLiteral("; origin %1, target %2, request %3, response %4")
-                       .arg(entityIdString(bytes, 12))
-                       .arg(entityIdString(bytes, 18))
-                       .arg(readU32(bytes, 24))
-                       .arg(readU32(bytes, 28));
-    } else if (bytes.size() >= 24) {
+                       .arg(entityIdString(bytes, OriginEntityOffset))
+                       .arg(entityIdString(bytes, TargetEntityOffset))
+                       .arg(readU32(bytes, RequestIdOffset))
+                       .arg(readU32(bytes, ActionResponseStatusOffset));
+    } else if (bytes.size() >= TargetEntityOffset + EntityIdByteLength) {
         summary += QStringLiteral("; origin %1, target %2")
-                       .arg(entityIdString(bytes, 12))
-                       .arg(entityIdString(bytes, 18));
+                       .arg(entityIdString(bytes, OriginEntityOffset))
+                       .arg(entityIdString(bytes, TargetEntityOffset));
     }
 
     return summary;
 }
 
-QPalette themePalette(Theme theme)
+auto themePalette(Theme theme) -> QPalette
 {
+    // NOLINTBEGIN(readability-magic-numbers) RGB theme constants are clearer inline.
     QPalette palette;
     if (theme == Theme::Dark) {
         palette.setColor(QPalette::Window, QColor(28, 31, 36));
@@ -459,9 +581,10 @@ QPalette themePalette(Theme theme)
     palette.setColor(QPalette::Highlight, QColor(0, 105, 170));
     palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
     return palette;
+    // NOLINTEND(readability-magic-numbers)
 }
 
-QString themeStyleSheet(Theme theme)
+auto themeStyleSheet(Theme theme) -> QString
 {
     if (theme == Theme::Dark) {
         return QStringLiteral(R"(
@@ -659,20 +782,20 @@ QString themeStyleSheet(Theme theme)
     )");
 }
 
-QString normalizedConfigKey(QString text)
+auto normalizedConfigKey(QString text) -> QString
 {
     text = text.trimmed().toLower();
     QString normalized;
     normalized.reserve(text.size());
-    for (const QChar ch : text) {
-        if (ch.isLetterOrNumber()) {
-            normalized.append(ch);
+    for (const QChar character : text) {
+        if (character.isLetterOrNumber()) {
+            normalized.append(character);
         }
     }
     return normalized;
 }
 
-bool parseTheme(const QJsonValue &value, Theme *theme)
+auto parseTheme(const QJsonValue &value, Theme *theme) -> bool
 {
     if (!value.isString()) {
         return false;
@@ -694,13 +817,13 @@ bool parseTheme(const QJsonValue &value, Theme *theme)
     return false;
 }
 
-int readInt(const QJsonObject &object,
+auto readInt(const QJsonObject &object,
             const QString &key,
             int fallback,
             int minimum,
             int maximum,
             QStringList *warnings,
-            const QString &path)
+            const QString &path) -> int
 {
     if (!object.contains(key)) {
         return fallback;
@@ -718,9 +841,9 @@ int readInt(const QJsonObject &object,
             return fallback;
         }
     } else if (value.isString()) {
-        bool ok = false;
-        parsed = value.toString().toInt(&ok);
-        if (!ok) {
+        bool parsedOk = false;
+        parsed = value.toString().toInt(&parsedOk);
+        if (!parsedOk) {
             warnings->append(QStringLiteral("%1.%2 must be an integer; using %3")
                                  .arg(path, key)
                                  .arg(fallback));
@@ -745,11 +868,12 @@ int readInt(const QJsonObject &object,
     return parsed;
 }
 
-QString readString(const QJsonObject &object,
-                   const QString &key,
-                   const QString &fallback,
-                   QStringList *warnings,
-                   const QString &path)
+// NOLINTBEGIN(bugprone-easily-swappable-parameters)
+auto readString(const QJsonObject &object,
+                const QString &key,
+                const QString &fallback,
+                QStringList *warnings,
+                const QString &path) -> QString
 {
     if (!object.contains(key)) {
         return fallback;
@@ -764,12 +888,13 @@ QString readString(const QJsonObject &object,
 
     return value.toString();
 }
+// NOLINTEND(bugprone-easily-swappable-parameters)
 
-bool readBool(const QJsonObject &object,
+auto readBool(const QJsonObject &object,
               const QString &key,
               bool fallback,
               QStringList *warnings,
-              const QString &path)
+              const QString &path) -> bool
 {
     if (!object.contains(key)) {
         return fallback;
@@ -785,7 +910,7 @@ bool readBool(const QJsonObject &object,
     return value.toBool();
 }
 
-QJsonObject readObject(const QJsonObject &object, const QString &key, QStringList *warnings, const QString &path)
+auto readObject(const QJsonObject &object, const QString &key, QStringList *warnings, const QString &path) -> QJsonObject
 {
     if (!object.contains(key)) {
         return {};
@@ -805,11 +930,11 @@ void warnUnknownKeys(const QJsonObject &object,
                      QStringList *warnings,
                      const QString &path);
 
-EntityId readEntityIdConfig(const QJsonObject &object,
+auto readEntityIdConfig(const QJsonObject &object,
                             const QString &key,
                             EntityId fallback,
                             QStringList *warnings,
-                            const QString &path)
+                            const QString &path) -> EntityId
 {
     const QJsonObject entity = readObject(object, key, warnings, path);
     if (entity.isEmpty()) {
@@ -817,32 +942,29 @@ EntityId readEntityIdConfig(const QJsonObject &object,
     }
 
     const QString entityPath = QStringLiteral("%1.%2").arg(path, key);
-    warnUnknownKeys(entity,
-                    {QStringLiteral("site"), QStringLiteral("application"), QStringLiteral("entity")},
-                    warnings,
-                    entityPath);
-    return EntityId{static_cast<quint16>(readInt(entity, QStringLiteral("site"), fallback.site, 0, 65535, warnings, entityPath)),
+    warnUnknownKeys(entity, entityIdConfigKeys(), warnings, entityPath);
+    return EntityId{static_cast<quint16>(readInt(entity, QStringLiteral("site"), fallback.site, 0, BroadcastEntityIdValue, warnings, entityPath)),
                     static_cast<quint16>(readInt(entity,
                                                  QStringLiteral("application"),
                                                  fallback.application,
                                                  0,
-                                                 65535,
+                                                 BroadcastEntityIdValue,
                                                  warnings,
                                                  entityPath)),
                     static_cast<quint16>(readInt(entity,
                                                  QStringLiteral("entity"),
                                                  fallback.entity,
                                                  0,
-                                                 65535,
+                                                 BroadcastEntityIdValue,
                                                  warnings,
                                                  entityPath))};
 }
 
-quint8 readReason(const QJsonObject &object,
+auto readReason(const QJsonObject &object,
                   const QString &key,
                   quint8 fallback,
                   QStringList *warnings,
-                  const QString &path)
+                  const QString &path) -> quint8
 {
     if (!object.contains(key)) {
         return fallback;
@@ -850,9 +972,9 @@ quint8 readReason(const QJsonObject &object,
 
     const QJsonValue value = object.value(key);
     if (value.isString()) {
-        bool ok = false;
-        const int number = value.toString().toInt(&ok);
-        if (ok && number >= 0 && number <= 255) {
+        bool parsedOk = false;
+        const int number = value.toString().toInt(&parsedOk);
+        if (parsedOk && number >= 0 && number <= MaxUint8Value) {
             return static_cast<quint8>(number);
         }
 
@@ -870,7 +992,7 @@ quint8 readReason(const QJsonObject &object,
         return fallback;
     }
 
-    return static_cast<quint8>(readInt(object, key, fallback, 0, 255, warnings, path));
+    return static_cast<quint8>(readInt(object, key, fallback, 0, MaxUint8Value, warnings, path));
 }
 
 void warnUnknownKeys(const QJsonObject &object,
@@ -886,7 +1008,7 @@ void warnUnknownKeys(const QJsonObject &object,
     }
 }
 
-bool parseConfigAddress(const QString &text, QHostAddress *address)
+auto parseConfigAddress(const QString &text, QHostAddress *address) -> bool
 {
     const QString trimmed = text.trimmed();
     if (trimmed.isEmpty()) {
@@ -902,14 +1024,14 @@ bool parseConfigAddress(const QString &text, QHostAddress *address)
     return true;
 }
 
-bool isAnyAddress(const QHostAddress &address)
+auto isAnyAddress(const QHostAddress &address) -> bool
 {
     return address == QHostAddress(QHostAddress::Any)
         || address == QHostAddress(QHostAddress::AnyIPv4)
         || address == QHostAddress(QHostAddress::AnyIPv6);
 }
 
-void validateNetworkConfig(const AppConfig &config, QStringList *warnings)
+void validateNetworkConfig(const AppConfig &config, QStringList *warnings) // NOLINT(readability-function-cognitive-complexity)
 {
     QHostAddress destinationAddress;
     const bool destinationValid = parseConfigAddress(config.destinationAddress, &destinationAddress);
@@ -996,7 +1118,7 @@ void validateNetworkConfig(const AppConfig &config, QStringList *warnings)
     }
 }
 
-QStringList configSearchPaths()
+auto configSearchPaths() -> QStringList
 {
     const QStringList arguments = QCoreApplication::arguments();
     for (int i = 1; i < arguments.size(); ++i) {
@@ -1010,7 +1132,7 @@ QStringList configSearchPaths()
             QDir(QCoreApplication::applicationDirPath()).filePath(fileName)};
 }
 
-AppConfig loadAppConfig(QStringList *warnings)
+auto loadAppConfig(QStringList *warnings) -> AppConfig
 {
     AppConfig config;
     QString configPath;
@@ -1033,7 +1155,7 @@ AppConfig loadAppConfig(QStringList *warnings)
         return config;
     }
 
-    QJsonParseError parseError;
+    QJsonParseError parseError{};
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         warnings->append(QStringLiteral("Could not parse %1: %2; using built-in defaults")
@@ -1043,14 +1165,7 @@ AppConfig loadAppConfig(QStringList *warnings)
 
     config.configPath = configPath;
     const QJsonObject root = document.object();
-    warnUnknownKeys(root,
-                    {QStringLiteral("theme"),
-                     QStringLiteral("network"),
-                     QStringLiteral("dis"),
-                     QStringLiteral("commands"),
-                     QStringLiteral("testFederate")},
-                    warnings,
-                    QStringLiteral("config"));
+    warnUnknownKeys(root, rootConfigKeys(), warnings, QStringLiteral("config"));
 
     if (root.contains(QStringLiteral("theme"))) {
         Theme theme = config.theme;
@@ -1062,19 +1177,7 @@ AppConfig loadAppConfig(QStringList *warnings)
     }
 
     const QJsonObject network = readObject(root, QStringLiteral("network"), warnings, QStringLiteral("config"));
-    warnUnknownKeys(network,
-                    {QStringLiteral("destinationAddress"),
-                     QStringLiteral("destinationPort"),
-                     QStringLiteral("listenAddress"),
-                     QStringLiteral("listenPort"),
-                     QStringLiteral("multicastGroupAddress"),
-                     QStringLiteral("multicastInterfaceName"),
-                     QStringLiteral("shareAddress"),
-                     QStringLiteral("reuseAddress"),
-                     QStringLiteral("joinMulticast"),
-                     QStringLiteral("multicastLoopback")},
-                    warnings,
-                    QStringLiteral("config.network"));
+    warnUnknownKeys(network, networkConfigKeys(), warnings, QStringLiteral("config.network"));
     config.destinationAddress = readString(network,
                                            QStringLiteral("destinationAddress"),
                                            config.destinationAddress,
@@ -1084,7 +1187,7 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                           QStringLiteral("destinationPort"),
                                                           config.destinationPort,
                                                           1,
-                                                          65535,
+                                                          MaxUdpPort,
                                                           warnings,
                                                           QStringLiteral("config.network")));
     config.listenAddress = readString(network,
@@ -1096,7 +1199,7 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                      QStringLiteral("listenPort"),
                                                      config.listenPort,
                                                      1,
-                                                     65535,
+                                                     MaxUdpPort,
                                                      warnings,
                                                      QStringLiteral("config.network")));
     config.multicastGroupAddress = readString(network,
@@ -1131,17 +1234,12 @@ AppConfig loadAppConfig(QStringList *warnings)
                                         QStringLiteral("config.network"));
 
     const QJsonObject dis = readObject(root, QStringLiteral("dis"), warnings, QStringLiteral("config"));
-    warnUnknownKeys(dis,
-                    {QStringLiteral("exerciseId"),
-                     QStringLiteral("managerId"),
-                     QStringLiteral("targetId")},
-                    warnings,
-                    QStringLiteral("config.dis"));
+    warnUnknownKeys(dis, disConfigKeys(), warnings, QStringLiteral("config.dis"));
     config.exerciseId = static_cast<quint8>(readInt(dis,
                                                     QStringLiteral("exerciseId"),
                                                     config.exerciseId,
                                                     1,
-                                                    255,
+                                                    MaxExerciseId,
                                                     warnings,
                                                     QStringLiteral("config.dis")));
     config.managerId = readEntityIdConfig(dis,
@@ -1156,47 +1254,35 @@ AppConfig loadAppConfig(QStringList *warnings)
                                          QStringLiteral("config.dis"));
 
     const QJsonObject commands = readObject(root, QStringLiteral("commands"), warnings, QStringLiteral("config"));
-    warnUnknownKeys(commands,
-                    {QStringLiteral("startup"), QStringLiteral("standby"), QStringLiteral("shutdown")},
-                    warnings,
-                    QStringLiteral("config.commands"));
+    warnUnknownKeys(commands, commandsConfigKeys(), warnings, QStringLiteral("config.commands"));
     const QJsonObject startup = readObject(commands, QStringLiteral("startup"), warnings, QStringLiteral("config.commands"));
-    warnUnknownKeys(startup,
-                    {QStringLiteral("actionId")},
-                    warnings,
-                    QStringLiteral("config.commands.startup"));
+    warnUnknownKeys(startup, actionConfigKeys(), warnings, QStringLiteral("config.commands.startup"));
     config.startupActionId = static_cast<quint32>(readInt(startup,
                                                           QStringLiteral("actionId"),
                                                           static_cast<int>(config.startupActionId),
                                                           0,
-                                                          2147483647,
+                                                          MaxActionId,
                                                           warnings,
                                                           QStringLiteral("config.commands.startup")));
     const QJsonObject standby = readObject(commands, QStringLiteral("standby"), warnings, QStringLiteral("config.commands"));
-    warnUnknownKeys(standby,
-                    {QStringLiteral("reason"), QStringLiteral("frozenBehavior")},
-                    warnings,
-                    QStringLiteral("config.commands.standby"));
+    warnUnknownKeys(standby, standbyConfigKeys(), warnings, QStringLiteral("config.commands.standby"));
     config.standbyReason =
         readReason(standby, QStringLiteral("reason"), config.standbyReason, warnings, QStringLiteral("config.commands.standby"));
     config.standbyFrozenBehavior = static_cast<quint8>(readInt(standby,
                                                                QStringLiteral("frozenBehavior"),
                                                                config.standbyFrozenBehavior,
                                                                0,
-                                                               255,
+                                                               MaxUint8Value,
                                                                warnings,
                                                                QStringLiteral("config.commands.standby")));
     const QJsonObject shutdown =
         readObject(commands, QStringLiteral("shutdown"), warnings, QStringLiteral("config.commands"));
-    warnUnknownKeys(shutdown,
-                    {QStringLiteral("actionId")},
-                    warnings,
-                    QStringLiteral("config.commands.shutdown"));
+    warnUnknownKeys(shutdown, actionConfigKeys(), warnings, QStringLiteral("config.commands.shutdown"));
     config.shutdownActionId = static_cast<quint32>(readInt(shutdown,
                                                            QStringLiteral("actionId"),
                                                            static_cast<int>(config.shutdownActionId),
                                                            0,
-                                                           2147483647,
+                                                           MaxActionId,
                                                            warnings,
                                                            QStringLiteral("config.commands.shutdown")));
 
@@ -1204,10 +1290,7 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                 QStringLiteral("testFederate"),
                                                 warnings,
                                                 QStringLiteral("config"));
-    warnUnknownKeys(testFederate,
-                    {QStringLiteral("enabled"), QStringLiteral("entityId")},
-                    warnings,
-                    QStringLiteral("config.testFederate"));
+    warnUnknownKeys(testFederate, testFederateConfigKeys(), warnings, QStringLiteral("config.testFederate"));
     config.testFederateEnabled = readBool(testFederate,
                                           QStringLiteral("enabled"),
                                           config.testFederateEnabled,
@@ -1237,8 +1320,8 @@ public:
 
         auto *central = new QWidget(this);
         auto *rootLayout = new QVBoxLayout(central);
-        rootLayout->setSpacing(12);
-        rootLayout->setContentsMargins(14, 14, 14, 10);
+        rootLayout->setSpacing(StandardSpacing);
+        rootLayout->setContentsMargins(WindowMargin, WindowMargin, WindowMargin, WindowBottomMargin);
 
         auto *settingsLayout = new QHBoxLayout();
         settingsLayout->addWidget(new QLabel(QStringLiteral("Theme"), central));
@@ -1246,7 +1329,7 @@ public:
         themeCombo_->addItem(QStringLiteral("Dark"), static_cast<int>(Theme::Dark));
         themeCombo_->addItem(QStringLiteral("Light"), static_cast<int>(Theme::Light));
         themeCombo_->addItem(QStringLiteral("Gruvbox"), static_cast<int>(Theme::Gruvbox));
-        themeCombo_->setFixedWidth(140);
+        themeCombo_->setFixedWidth(ThemeComboWidth);
         settingsLayout->addWidget(themeCombo_);
         settingsLayout->addStretch(1);
 
@@ -1263,7 +1346,7 @@ public:
 
         auto *disGroup = new QGroupBox(QStringLiteral("DIS Identity"), central);
         auto *disLayout = new QGridLayout(disGroup);
-        exerciseSpin_ = makeSmallSpinBox(disGroup, 1, 255, appConfig_.exerciseId);
+        exerciseSpin_ = makeSmallSpinBox(disGroup, 1, MaxExerciseId, appConfig_.exerciseId);
         managerSiteSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.site);
         managerApplicationSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.application);
         managerEntitySpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.entity);
@@ -1283,7 +1366,7 @@ public:
         disLayout->addWidget(targetApplicationSpin_, 2, 2);
         disLayout->addWidget(targetEntitySpin_, 2, 3);
         disLayout->addWidget(targetBroadcastCheck_, 2, 4);
-        disLayout->setColumnStretch(5, 1);
+        disLayout->setColumnStretch(IdentityStretchColumn, 1);
         connect(targetBroadcastCheck_, &QCheckBox::toggled, this, &MainWindow::setTargetBroadcast);
 
         auto *stateGroup = new QGroupBox(QStringLiteral("State Commands"), central);
@@ -1297,27 +1380,27 @@ public:
         auto *testLayout = new QGridLayout(testGroup);
         dummyFederateStatusLabel_ = new QLabel(QStringLiteral("Configured: enabled, waiting to bind"), testGroup);
         dummyFederateStatusLabel_->setWordWrap(true);
-        dummyFederateSiteSpin_ = makeSmallSpinBox(testGroup, 0, 65535, appConfig_.testFederateId.site);
+        dummyFederateSiteSpin_ = makeSmallSpinBox(testGroup, 0, BroadcastEntityIdValue, appConfig_.testFederateId.site);
         dummyFederateApplicationSpin_ =
-            makeSmallSpinBox(testGroup, 0, 65535, appConfig_.testFederateId.application);
-        dummyFederateEntitySpin_ = makeSmallSpinBox(testGroup, 0, 65535, appConfig_.testFederateId.entity);
-        testGroup->setMinimumWidth(260);
+            makeSmallSpinBox(testGroup, 0, BroadcastEntityIdValue, appConfig_.testFederateId.application);
+        dummyFederateEntitySpin_ = makeSmallSpinBox(testGroup, 0, BroadcastEntityIdValue, appConfig_.testFederateId.entity);
+        testGroup->setMinimumWidth(TestFederateMinimumWidth);
         testLayout->addWidget(dummyFederateStatusLabel_, 0, 0, 1, 4);
         testLayout->addWidget(new QLabel(QStringLiteral("Entity ID")), 1, 0);
         testLayout->addWidget(dummyFederateSiteSpin_, 1, 1);
         testLayout->addWidget(dummyFederateApplicationSpin_, 1, 2);
         testLayout->addWidget(dummyFederateEntitySpin_, 1, 3);
-        testLayout->setColumnStretch(4, 1);
+        testLayout->setColumnStretch(TestFederateStretchColumn, 1);
         testGroup->setVisible(appConfig_.testFederateEnabled);
 
         auto *identityLayout = new QHBoxLayout();
-        identityLayout->setSpacing(12);
+        identityLayout->setSpacing(StandardSpacing);
         identityLayout->addWidget(disGroup, 2);
         if (appConfig_.testFederateEnabled) {
             identityLayout->addWidget(testGroup, 1);
         }
 
-        responseTable_ = new QTableWidget(0, 5, central);
+        responseTable_ = new QTableWidget(0, ResponseTableColumnCount, central);
         responseTable_->setHorizontalHeaderLabels(
             {QStringLiteral("Time"), QStringLiteral("Peer"), QStringLiteral("PDU"),
              QStringLiteral("Request"), QStringLiteral("Summary")});
@@ -1333,7 +1416,7 @@ public:
 
         log_ = new QPlainTextEdit(central);
         log_->setReadOnly(true);
-        log_->setMaximumBlockCount(1000);
+        log_->setMaximumBlockCount(MaxLogBlocks);
 
         rootLayout->addLayout(settingsLayout);
         rootLayout->addWidget(networkGroup);
@@ -1342,14 +1425,14 @@ public:
         rootLayout->addWidget(responseTable_, 1);
         rootLayout->addWidget(log_, 1);
         setCentralWidget(central);
-        resize(980, 720);
+        resize(DefaultWindowWidth, DefaultWindowHeight);
 
         socket_ = new QUdpSocket(this);
         socket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, appConfig_.multicastLoopback ? 1 : 0);
         connect(socket_, &QUdpSocket::readyRead, this, &MainWindow::readDatagrams);
         dummyFederateSocket_ = new QUdpSocket(this);
         connect(dummyFederateSocket_, &QUdpSocket::readyRead, this, &MainWindow::readDummyFederateDatagrams);
-        connect(themeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] {
+        connect(themeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() -> void {
             applyTheme(static_cast<Theme>(themeCombo_->currentData().toInt()));
         });
         applyTheme(appConfig_.theme);
@@ -1368,8 +1451,8 @@ public:
             bindDummyFederateSocket();
         }
         auto *rebindTimer = new QTimer(this);
-        rebindTimer->setInterval(1000);
-        connect(rebindTimer, &QTimer::timeout, this, [this] {
+        rebindTimer->setInterval(RebindIntervalMilliseconds);
+        connect(rebindTimer, &QTimer::timeout, this, [this]() -> void {
             bindListenSocket();
             bindDummyFederateSocket();
         });
@@ -1377,15 +1460,15 @@ public:
     }
 
 private:
-    static QSpinBox *makePortSpinBox(QWidget *parent, int value)
+    static auto makePortSpinBox(QWidget *parent, int value) -> QSpinBox *
     {
         auto *spinBox = new QSpinBox(parent);
-        spinBox->setRange(1, 65535);
+        spinBox->setRange(1, MaxUdpPort);
         spinBox->setValue(value);
         return spinBox;
     }
 
-    static QSpinBox *makeSmallSpinBox(QWidget *parent, int minimum, int maximum, int value)
+    static auto makeSmallSpinBox(QWidget *parent, int minimum, int maximum, int value) -> QSpinBox * // NOLINT(bugprone-easily-swappable-parameters)
     {
         auto *spinBox = new QSpinBox(parent);
         spinBox->setRange(minimum, maximum);
@@ -1393,7 +1476,7 @@ private:
         return spinBox;
     }
 
-    static bool parseAddressText(const QString &text, QHostAddress *address)
+    static auto parseAddressText(const QString &text, QHostAddress *address) -> bool
     {
         const QString trimmed = text.trimmed();
         if (trimmed.isEmpty()) {
@@ -1409,7 +1492,7 @@ private:
         return true;
     }
 
-    QUdpSocket::BindMode udpBindMode() const
+    [[nodiscard]] auto udpBindMode() const -> QUdpSocket::BindMode
     {
         QUdpSocket::BindMode mode = QUdpSocket::DefaultForPlatform;
         if (appConfig_.shareAddress) {
@@ -1421,7 +1504,7 @@ private:
         return mode;
     }
 
-    QHostAddress configuredMulticastGroup(QString *error = nullptr) const
+    auto configuredMulticastGroup(QString *error = nullptr) const -> QHostAddress
     {
         QHostAddress group;
         if (!appConfig_.multicastGroupAddress.trimmed().isEmpty()) {
@@ -1449,7 +1532,7 @@ private:
         return {};
     }
 
-    QNetworkInterface configuredMulticastInterface(QString *error = nullptr) const
+    auto configuredMulticastInterface(QString *error = nullptr) const -> QNetworkInterface
     {
         const QString interfaceName = appConfig_.multicastInterfaceName.trimmed();
         if (interfaceName.isEmpty()) {
@@ -1467,7 +1550,7 @@ private:
         return {};
     }
 
-    static bool sameNetworkInterface(const QNetworkInterface &left, const QNetworkInterface &right)
+    static auto sameNetworkInterface(const QNetworkInterface &left, const QNetworkInterface &right) -> bool
     {
         if (!left.isValid() && !right.isValid()) {
             return true;
@@ -1503,7 +1586,7 @@ private:
         }
     }
 
-    bool updateListenMulticastGroup()
+    auto updateListenMulticastGroup() -> bool
     {
         if (!appConfig_.joinMulticast) {
             clearListenMulticastGroup();
@@ -1589,12 +1672,12 @@ private:
     void addStateButton(QHBoxLayout *layout, const QString &label, SimulationState state)
     {
         auto *button = new QPushButton(label, this);
-        button->setMinimumHeight(36);
-        connect(button, &QPushButton::clicked, this, [this, state] { sendStateCommand(state); });
+        button->setMinimumHeight(StateButtonMinimumHeight);
+        connect(button, &QPushButton::clicked, this, [this, state]() -> void { sendStateCommand(state); });
         layout->addWidget(button);
     }
 
-    DisConfig currentConfig(bool *ok = nullptr) const
+    auto currentConfig(bool *configOk = nullptr) const -> DisConfig
     {
         DisConfig config;
         const bool destinationOk = parseAddressText(destinationAddressEdit_->text(), &config.destinationAddress);
@@ -1609,25 +1692,25 @@ private:
         config.standbyReason = appConfig_.standbyReason;
         config.standbyFrozenBehavior = appConfig_.standbyFrozenBehavior;
 
-        if (ok != nullptr) {
-            *ok = destinationOk && listenOk;
+        if (configOk != nullptr) {
+            *configOk = destinationOk && listenOk;
         }
         return config;
     }
 
-    EntityId currentTestFederateId() const
+    [[nodiscard]] auto currentTestFederateId() const -> EntityId
     {
         return makeEntityId(dummyFederateSiteSpin_,
                             dummyFederateApplicationSpin_,
                             dummyFederateEntitySpin_);
     }
 
-    EntityId currentTargetId() const
+    [[nodiscard]] auto currentTargetId() const -> EntityId
     {
         return makeEntityId(targetSiteSpin_, targetApplicationSpin_, targetEntitySpin_);
     }
 
-    static EntityId makeEntityId(const QSpinBox *site, const QSpinBox *application, const QSpinBox *entity)
+    static auto makeEntityId(const QSpinBox *site, const QSpinBox *application, const QSpinBox *entity) -> EntityId
     {
         return EntityId{static_cast<quint16>(site->value()),
                         static_cast<quint16>(application->value()),
@@ -1671,7 +1754,7 @@ private:
             return;
         }
 
-        const quint16 listenPort = static_cast<quint16>(listenPortSpin_->value());
+        const auto listenPort = static_cast<quint16>(listenPortSpin_->value());
         const QString listeningMessage =
             QStringLiteral("Listening on %1:%2").arg(listenAddress.toString()).arg(listenPort);
         if (socket_->state() == QAbstractSocket::BoundState
@@ -1708,9 +1791,9 @@ private:
             return;
         }
 
-        bool ok = false;
-        const auto config = currentConfig(&ok);
-        if (!ok) {
+        bool configOk = false;
+        const auto config = currentConfig(&configOk);
+        if (!configOk) {
             statusBar()->showMessage(QStringLiteral("Invalid network address"));
             if (dummyFederateStatusLabel_ != nullptr) {
                 dummyFederateStatusLabel_->setText(QStringLiteral("Configured: enabled, waiting for valid network settings"));
@@ -1769,9 +1852,9 @@ private:
 
     void sendStateCommand(SimulationState state)
     {
-        bool ok = false;
-        const auto config = currentConfig(&ok);
-        if (!ok) {
+        bool configOk = false;
+        const auto config = currentConfig(&configOk);
+        if (!configOk) {
             QMessageBox::warning(this, QStringLiteral("Invalid Configuration"),
                                  QStringLiteral("Enter valid destination and listen IP addresses."));
             return;
@@ -1842,17 +1925,17 @@ private:
 
     void respondFromDummyFederate(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
     {
-        if (datagram.size() < 28 || static_cast<quint8>(datagram[3]) != SimManagementFamily) {
+        if (datagram.size() < MinRequestPduLength || static_cast<quint8>(datagram[PduFamilyOffset]) != SimManagementFamily) {
             return;
         }
 
-        const auto pduType = static_cast<PduType>(static_cast<quint8>(datagram[2]));
+        const auto pduType = static_cast<PduType>(static_cast<quint8>(datagram[PduTypeOffset]));
         if (pduType != StartResumePdu && pduType != StopFreezePdu && pduType != ActionRequestPdu) {
             return;
         }
 
         const quint32 requestId = requestIdFromResponse(datagram, static_cast<quint8>(pduType));
-        const EntityId receivingEntity = readEntityId(datagram, 18);
+        const EntityId receivingEntity = readEntityId(datagram, TargetEntityOffset);
         const EntityId federateId = currentTestFederateId();
         if (!entityIdsMatch(receivingEntity, federateId)) {
             appendLog(QStringLiteral("Dummy federate ignored %1 request %2 for entity %3; configured as %4")
@@ -1864,19 +1947,19 @@ private:
         }
 
         DisConfig responseConfig;
-        responseConfig.exerciseId = static_cast<quint8>(datagram[1]);
+        responseConfig.exerciseId = static_cast<quint8>(datagram[PduExerciseIdOffset]);
         responseConfig.managerId = receivingEntity;
-        responseConfig.targetId = readEntityId(datagram, 12);
+        responseConfig.targetId = readEntityId(datagram, OriginEntityOffset);
 
         const QByteArray response = pduType == ActionRequestPdu
             ? makeActionResponsePdu(responseConfig, requestId)
             : makeAcknowledgePdu(responseConfig, requestId, pduType);
-        bool ok = false;
-        const auto config = currentConfig(&ok);
+        bool configOk = false;
+        const auto config = currentConfig(&configOk);
         const QHostAddress responseAddress =
-            ok && config.destinationAddress.isMulticast() ? config.destinationAddress : sender;
+            configOk && config.destinationAddress.isMulticast() ? config.destinationAddress : sender;
         const quint16 responsePort =
-            ok && config.destinationAddress.isMulticast() ? config.destinationPort : senderPort;
+            configOk && config.destinationAddress.isMulticast() ? config.destinationPort : senderPort;
         const auto written = dummyFederateSocket_->writeDatagram(response, responseAddress, responsePort);
         if (written != response.size()) {
             appendLog(QStringLiteral("Dummy federate failed to acknowledge request %1: %2")
@@ -1899,7 +1982,8 @@ private:
 
     void recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
     {
-        const quint8 pduType = datagram.size() >= 3 ? static_cast<quint8>(datagram[2]) : 0;
+        const quint8 pduType =
+            datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;
         const quint32 requestId = requestIdFromResponse(datagram, pduType);
         const int row = responseTable_->rowCount();
         responseTable_->insertRow(row);
@@ -1922,19 +2006,19 @@ private:
                       .arg(senderPort));
     }
 
-    static quint32 requestIdFromResponse(const QByteArray &datagram, quint8 pduType)
+    static auto requestIdFromResponse(const QByteArray &datagram, quint8 pduType) -> quint32
     {
-        if (pduType == AcknowledgePdu && datagram.size() >= 32) {
-            return readU32(datagram, 28);
+        if (pduType == AcknowledgePdu && datagram.size() >= AcknowledgePduLength) {
+            return readU32(datagram, AcknowledgeRequestIdOffset);
         }
-        if (pduType == ActionResponsePdu && datagram.size() >= 28) {
-            return readU32(datagram, 24);
+        if (pduType == ActionResponsePdu && datagram.size() >= ActionResponseStatusOffset) {
+            return readU32(datagram, RequestIdOffset);
         }
-        if (pduType == ActionRequestPdu && datagram.size() >= 28) {
-            return readU32(datagram, 24);
+        if (pduType == ActionRequestPdu && datagram.size() >= ActionResponseStatusOffset) {
+            return readU32(datagram, RequestIdOffset);
         }
-        if ((pduType == StartResumePdu || pduType == StopFreezePdu) && datagram.size() >= 36) {
-            return readU32(datagram, datagram.size() - 4);
+        if ((pduType == StartResumePdu || pduType == StopFreezePdu) && datagram.size() >= StopFreezePduLength) {
+            return readU32(datagram, datagram.size() - RequestIdByteLength);
         }
         return 0;
     }
@@ -1995,7 +2079,7 @@ private:
     QMap<quint32, QString> requestStates_;
 };
 
-int main(int argc, char *argv[])
+auto main(int argc, char *argv[]) -> int
 {
     QApplication app(argc, argv);
 
