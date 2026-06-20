@@ -24,7 +24,7 @@ cmake --build build
 The application uses standard DIS6 Simulation Management PDU layouts:
 
 - `Startup`: Action Request PDU, default action ID `1`
-- `Standby`: Stop/Freeze PDU
+- `Standby`: Stop/Freeze PDU, default reason `recess`
 - `Operate`: Start/Resume PDU
 - `Shutdown`: Action Request PDU, default action ID `2`
 
@@ -34,13 +34,26 @@ Response PDUs are matched back to the request ID sent by the manager.
 
 The Startup and Shutdown action IDs are editable in the UI so they can be
 aligned with the simulation component interface control document when needed.
+The Standby Stop/Freeze reason and frozen behavior fields are also editable.
+
+## Configuration
+
+At startup, DISPatch looks for `DISPatch_config.json` in the current working
+directory and then next to the executable. You can pass an explicit path with
+`--config path/to/DISPatch_config.json`.
+
+The config file supplies the startup defaults for the editable UI fields:
+theme, network addresses and ports, DIS entity IDs, action IDs, and the
+Standby Stop/Freeze reason and frozen behavior. The sample config uses
+`"reason": "recess"`, but the reason can also be a numeric DIS value.
 
 ## Local Test Federate
 
-Enable `Dummy simulation federate` in the UI to run an in-process UDP responder
-for local testing. It listens on the configured destination address and port,
-accepts DIS6 Simulation Management state-transition requests, and sends accepted
-responses back to the manager:
+Set `testFederate.enabled` in `DISPatch_config.json` to run an in-process UDP
+responder for local testing. When enabled, the UI shows a Test Federate status
+line with the bind state. It listens on the configured destination address and
+port, accepts DIS6 Simulation Management state-transition requests, and sends
+accepted responses back to the manager:
 
 - `Startup` and `Shutdown`: Action Response PDU
 - `Standby` and `Operate`: Acknowledge PDU

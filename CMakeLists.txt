@@ -9,3 +9,5 @@ find_package(Qt5 REQUIRED COMPONENTS Widgets Network)
 
 add_executable(DISPatch main.cpp)
 target_link_libraries(DISPatch PRIVATE Qt5::Widgets Qt5::Network)
+
+configure_file(DISPatch_config.json DISPatch_config.json COPYONLY)

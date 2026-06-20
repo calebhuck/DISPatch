@@ -1,0 +1,37 @@
+{
+  "theme": "dark",
+  "network": {
+    "destinationAddress": "239.1.2.3",
+    "destinationPort": 3000,
+    "listenAddress": "0.0.0.0",
+    "listenPort": 3001
+  },
+  "dis": {
+    "exerciseId": 1,
+    "managerId": {
+      "site": 1,
+      "application": 1,
+      "entity": 1
+    },
+    "targetId": {
+      "site": 1,
+      "application": 1,
+      "entity": 0
+    }
+  },
+  "commands": {
+    "startup": {
+      "actionId": 1
+    },
+    "standby": {
+      "reason": "recess",
+      "frozenBehavior": 0
+    },
+    "shutdown": {
+      "actionId": 2
+    }
+  },
+  "testFederate": {
+    "enabled": false
+  }
+}
