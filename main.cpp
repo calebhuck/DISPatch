@@ -1,5 +1,6 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QAbstractItemView>
+#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QGridLayout>
@@ -22,6 +23,7 @@
 
 #include <QtNetwork/QHostAddress>
 #include <QtNetwork/QAbstractSocket>
+#include <QtNetwork/QNetworkInterface>
 #include <QtNetwork/QUdpSocket>
 
 #include <QtCore/QCoreApplication>
@@ -45,6 +47,7 @@ namespace {
 
 constexpr quint8 DisVersion = 6;
 constexpr quint8 SimManagementFamily = 5;
+constexpr quint16 BroadcastEntityIdValue = 65535;
 
 enum PduType : quint8 {
     StartResumePdu = 13,
@@ -71,7 +74,7 @@ struct DisConfig {
     QHostAddress destinationAddress;
     quint16 destinationPort = 3000;
     QHostAddress listenAddress = QHostAddress::AnyIPv4;
-    quint16 listenPort = 3001;
+    quint16 listenPort = 3000;
     quint8 exerciseId = 1;
     EntityId managerId;
     EntityId targetId;
@@ -83,14 +86,21 @@ struct DisConfig {
 
 enum class Theme {
     Dark,
-    Light
+    Light,
+    Gruvbox
 };
 
 struct AppConfig {
     QString destinationAddress = QStringLiteral("239.1.2.3");
     quint16 destinationPort = 3000;
     QString listenAddress = QStringLiteral("0.0.0.0");
-    quint16 listenPort = 3001;
+    quint16 listenPort = 3000;
+    QString multicastGroupAddress;
+    QString multicastInterfaceName;
+    bool shareAddress = true;
+    bool reuseAddress = true;
+    bool joinMulticast = true;
+    bool multicastLoopback = true;
     quint8 exerciseId = 1;
     EntityId managerId;
     EntityId targetId = EntityId{1, 1, 0};
@@ -100,6 +110,7 @@ struct AppConfig {
     quint8 standbyFrozenBehavior = 0;
     Theme theme = Theme::Dark;
     bool testFederateEnabled = false;
+    EntityId testFederateId = EntityId{1, 1, 0};
     QString configPath;
 };
 
@@ -178,6 +189,20 @@ QString pduTypeName(quint8 pduType)
 void writeEntityId(QDataStream &out, const EntityId &entityId)
 {
     out << entityId.site << entityId.application << entityId.entity;
+}
+
+bool entityIdsMatch(const EntityId &left, const EntityId &right)
+{
+    return left.site == right.site && left.application == right.application
+        && left.entity == right.entity;
+}
+
+QString entityIdString(const EntityId &entityId)
+{
+    return QStringLiteral("%1:%2:%3")
+        .arg(entityId.site)
+        .arg(entityId.application)
+        .arg(entityId.entity);
 }
 
 QByteArray makeHeader(const DisConfig &config, PduType pduType, quint16 length)
@@ -403,6 +428,24 @@ QPalette themePalette(Theme theme)
         return palette;
     }
 
+    if (theme == Theme::Gruvbox) {
+        palette.setColor(QPalette::Window, QColor(40, 40, 40));
+        palette.setColor(QPalette::WindowText, QColor(235, 219, 178));
+        palette.setColor(QPalette::Base, QColor(29, 32, 33));
+        palette.setColor(QPalette::AlternateBase, QColor(50, 48, 47));
+        palette.setColor(QPalette::ToolTipBase, QColor(235, 219, 178));
+        palette.setColor(QPalette::ToolTipText, QColor(29, 32, 33));
+        palette.setColor(QPalette::Text, QColor(235, 219, 178));
+        palette.setColor(QPalette::Button, QColor(60, 56, 54));
+        palette.setColor(QPalette::ButtonText, QColor(235, 219, 178));
+        palette.setColor(QPalette::BrightText, QColor(251, 241, 199));
+        palette.setColor(QPalette::Highlight, QColor(215, 153, 33));
+        palette.setColor(QPalette::HighlightedText, QColor(40, 40, 40));
+        palette.setColor(QPalette::Disabled, QPalette::Text, QColor(146, 131, 116));
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(146, 131, 116));
+        return palette;
+    }
+
     palette.setColor(QPalette::Window, QColor(244, 246, 248));
     palette.setColor(QPalette::WindowText, QColor(31, 35, 40));
     palette.setColor(QPalette::Base, QColor(255, 255, 255));
@@ -445,6 +488,22 @@ QString themeStyleSheet(Theme theme)
                 selection-background-color: #2b82be;
             }
             QLineEdit, QSpinBox, QComboBox { min-height: 26px; padding: 2px 6px; }
+            QCheckBox { spacing: 8px; }
+            QCheckBox::indicator {
+                width: 15px;
+                height: 15px;
+                background: #14171b;
+                border: 2px solid #8a96a8;
+                border-radius: 3px;
+            }
+            QCheckBox::indicator:checked {
+                background: #2b82be;
+                border-color: #89caf4;
+            }
+            QCheckBox::indicator:disabled {
+                background: #272c34;
+                border-color: #4a5362;
+            }
             QPushButton {
                 background: #2b82be;
                 border: 1px solid #3b91cc;
@@ -466,6 +525,72 @@ QString themeStyleSheet(Theme theme)
             }
             QTableWidget::item { padding: 4px; }
             QStatusBar { border-top: 1px solid #3a414c; }
+        )");
+    }
+
+    if (theme == Theme::Gruvbox) {
+        return QStringLiteral(R"(
+            QWidget { font-size: 10pt; }
+            QMainWindow, QWidget { background: #282828; color: #ebdbb2; }
+            QGroupBox {
+                border: 1px solid #665c54;
+                border-radius: 6px;
+                margin-top: 16px;
+                padding: 14px 12px 12px 12px;
+                font-weight: 600;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 6px;
+                color: #fbf1c7;
+            }
+            QLineEdit, QSpinBox, QComboBox, QPlainTextEdit, QTableWidget {
+                background: #1d2021;
+                border: 1px solid #665c54;
+                border-radius: 4px;
+                color: #ebdbb2;
+                selection-background-color: #d79921;
+                selection-color: #282828;
+            }
+            QLineEdit, QSpinBox, QComboBox { min-height: 26px; padding: 2px 6px; }
+            QCheckBox { spacing: 8px; }
+            QCheckBox::indicator {
+                width: 15px;
+                height: 15px;
+                background: #1d2021;
+                border: 2px solid #d5c4a1;
+                border-radius: 3px;
+            }
+            QCheckBox::indicator:checked {
+                background: #d79921;
+                border-color: #fabd2f;
+            }
+            QCheckBox::indicator:disabled {
+                background: #3c3836;
+                border-color: #665c54;
+            }
+            QPushButton {
+                background: #458588;
+                border: 1px solid #83a598;
+                border-radius: 4px;
+                color: #fbf1c7;
+                font-weight: 600;
+                padding: 7px 14px;
+            }
+            QPushButton:hover { background: #689d6a; }
+            QPushButton:pressed { background: #3c3836; }
+            QHeaderView::section {
+                background: #3c3836;
+                border: 0;
+                border-right: 1px solid #665c54;
+                border-bottom: 1px solid #665c54;
+                color: #fbf1c7;
+                font-weight: 600;
+                padding: 6px;
+            }
+            QTableWidget::item { padding: 4px; }
+            QStatusBar { border-top: 1px solid #665c54; }
         )");
     }
 
@@ -494,6 +619,22 @@ QString themeStyleSheet(Theme theme)
             selection-background-color: #0069aa;
         }
         QLineEdit, QSpinBox, QComboBox { min-height: 26px; padding: 2px 6px; }
+        QCheckBox { spacing: 8px; }
+        QCheckBox::indicator {
+            width: 15px;
+            height: 15px;
+            background: #ffffff;
+            border: 2px solid #6e7781;
+            border-radius: 3px;
+        }
+        QCheckBox::indicator:checked {
+            background: #0069aa;
+            border-color: #005d97;
+        }
+        QCheckBox::indicator:disabled {
+            background: #e9edf2;
+            border-color: #afb8c1;
+        }
         QPushButton {
             background: #0069aa;
             border: 1px solid #005d97;
@@ -544,6 +685,10 @@ bool parseTheme(const QJsonValue &value, Theme *theme)
     }
     if (key == QStringLiteral("light")) {
         *theme = Theme::Light;
+        return true;
+    }
+    if (key == QStringLiteral("gruvbox")) {
+        *theme = Theme::Gruvbox;
         return true;
     }
     return false;
@@ -655,6 +800,11 @@ QJsonObject readObject(const QJsonObject &object, const QString &key, QStringLis
     return value.toObject();
 }
 
+void warnUnknownKeys(const QJsonObject &object,
+                     const QStringList &knownKeys,
+                     QStringList *warnings,
+                     const QString &path);
+
 EntityId readEntityIdConfig(const QJsonObject &object,
                             const QString &key,
                             EntityId fallback,
@@ -667,6 +817,10 @@ EntityId readEntityIdConfig(const QJsonObject &object,
     }
 
     const QString entityPath = QStringLiteral("%1.%2").arg(path, key);
+    warnUnknownKeys(entity,
+                    {QStringLiteral("site"), QStringLiteral("application"), QStringLiteral("entity")},
+                    warnings,
+                    entityPath);
     return EntityId{static_cast<quint16>(readInt(entity, QStringLiteral("site"), fallback.site, 0, 65535, warnings, entityPath)),
                     static_cast<quint16>(readInt(entity,
                                                  QStringLiteral("application"),
@@ -719,6 +873,129 @@ quint8 readReason(const QJsonObject &object,
     return static_cast<quint8>(readInt(object, key, fallback, 0, 255, warnings, path));
 }
 
+void warnUnknownKeys(const QJsonObject &object,
+                     const QStringList &knownKeys,
+                     QStringList *warnings,
+                     const QString &path)
+{
+    for (const QString &key : object.keys()) {
+        if (!knownKeys.contains(key)) {
+            warnings->append(QStringLiteral("%1.%2 is not a recognized config key; ignoring it")
+                                 .arg(path, key));
+        }
+    }
+}
+
+bool parseConfigAddress(const QString &text, QHostAddress *address)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+
+    QHostAddress parsed;
+    if (!parsed.setAddress(trimmed)) {
+        return false;
+    }
+
+    *address = parsed;
+    return true;
+}
+
+bool isAnyAddress(const QHostAddress &address)
+{
+    return address == QHostAddress(QHostAddress::Any)
+        || address == QHostAddress(QHostAddress::AnyIPv4)
+        || address == QHostAddress(QHostAddress::AnyIPv6);
+}
+
+void validateNetworkConfig(const AppConfig &config, QStringList *warnings)
+{
+    QHostAddress destinationAddress;
+    const bool destinationValid = parseConfigAddress(config.destinationAddress, &destinationAddress);
+    if (!destinationValid) {
+        warnings->append(QStringLiteral("config.network.destinationAddress \"%1\" is not a valid IP address")
+                             .arg(config.destinationAddress));
+    } else if (isAnyAddress(destinationAddress)) {
+        warnings->append(QStringLiteral(
+            "config.network.destinationAddress is a wildcard address; sending commands to it is probably invalid"));
+    }
+
+    QHostAddress listenAddress;
+    const bool listenValid = parseConfigAddress(config.listenAddress, &listenAddress);
+    if (!listenValid) {
+        warnings->append(QStringLiteral("config.network.listenAddress \"%1\" is not a valid bind address")
+                             .arg(config.listenAddress));
+    } else if (listenAddress.isMulticast()) {
+        warnings->append(QStringLiteral(
+            "config.network.listenAddress is multicast; use a local bind address like 0.0.0.0 and set multicastGroupAddress instead"));
+    }
+
+    QHostAddress explicitMulticastGroup;
+    const bool hasExplicitMulticastGroup = !config.multicastGroupAddress.trimmed().isEmpty();
+    bool explicitMulticastValid = false;
+    if (hasExplicitMulticastGroup) {
+        explicitMulticastValid = parseConfigAddress(config.multicastGroupAddress, &explicitMulticastGroup);
+        if (!explicitMulticastValid) {
+            warnings->append(QStringLiteral("config.network.multicastGroupAddress \"%1\" is not a valid IP address")
+                                 .arg(config.multicastGroupAddress));
+        } else if (!explicitMulticastGroup.isMulticast()) {
+            warnings->append(QStringLiteral(
+                "config.network.multicastGroupAddress \"%1\" is not multicast; expected 224.0.0.0-239.255.255.255 or an IPv6 multicast address")
+                                 .arg(config.multicastGroupAddress));
+        }
+    }
+
+    const bool destinationIsMulticast = destinationValid && destinationAddress.isMulticast();
+    const bool hasEffectiveMulticastGroup =
+        (hasExplicitMulticastGroup && explicitMulticastValid && explicitMulticastGroup.isMulticast())
+        || (!hasExplicitMulticastGroup && destinationIsMulticast);
+
+    if (config.joinMulticast && !hasEffectiveMulticastGroup) {
+        warnings->append(QStringLiteral(
+            "config.network.joinMulticast is true, but no valid multicast group is configured"));
+    }
+    if (!config.joinMulticast && destinationIsMulticast) {
+        warnings->append(QStringLiteral(
+            "config.network.destinationAddress is multicast, but joinMulticast is false; this instance may not receive multicast traffic"));
+    }
+    if (config.joinMulticast && listenValid && !isAnyAddress(listenAddress)) {
+        warnings->append(QStringLiteral(
+            "config.network.joinMulticast is true while listenAddress is specific; 0.0.0.0 is usually safer for multicast receives"));
+    }
+
+    if (!config.multicastInterfaceName.trimmed().isEmpty()) {
+        const QNetworkInterface interface =
+            QNetworkInterface::interfaceFromName(config.multicastInterfaceName.trimmed());
+        if (!interface.isValid()) {
+            warnings->append(QStringLiteral("config.network.multicastInterfaceName \"%1\" is not a known interface")
+                                 .arg(config.multicastInterfaceName));
+        }
+        if (!config.joinMulticast || !hasEffectiveMulticastGroup) {
+            warnings->append(QStringLiteral(
+                "config.network.multicastInterfaceName is set, but no multicast join will be attempted"));
+        }
+    }
+
+    if ((!config.shareAddress || !config.reuseAddress)
+        && (destinationIsMulticast || config.destinationPort == config.listenPort)) {
+        warnings->append(QStringLiteral(
+            "config.network.shareAddress and reuseAddress should usually both be true when multiple DIS apps share one UDP port"));
+    }
+
+    if (!config.multicastLoopback && destinationIsMulticast
+        && config.destinationPort == config.listenPort) {
+        warnings->append(QStringLiteral(
+            "config.network.multicastLoopback is false; local same-machine multicast testing may not see looped-back traffic"));
+    }
+
+    if (config.testFederateEnabled && config.destinationPort == config.listenPort
+        && (!config.shareAddress || !config.reuseAddress)) {
+        warnings->append(QStringLiteral(
+            "testFederate.enabled uses a second local socket on the destination port; enable shareAddress and reuseAddress when ports overlap"));
+    }
+}
+
 QStringList configSearchPaths()
 {
     const QStringList arguments = QCoreApplication::arguments();
@@ -766,17 +1043,38 @@ AppConfig loadAppConfig(QStringList *warnings)
 
     config.configPath = configPath;
     const QJsonObject root = document.object();
+    warnUnknownKeys(root,
+                    {QStringLiteral("theme"),
+                     QStringLiteral("network"),
+                     QStringLiteral("dis"),
+                     QStringLiteral("commands"),
+                     QStringLiteral("testFederate")},
+                    warnings,
+                    QStringLiteral("config"));
 
     if (root.contains(QStringLiteral("theme"))) {
         Theme theme = config.theme;
         if (parseTheme(root.value(QStringLiteral("theme")), &theme)) {
             config.theme = theme;
         } else {
-            warnings->append(QStringLiteral("theme must be \"dark\" or \"light\"; using dark"));
+            warnings->append(QStringLiteral("theme must be \"dark\", \"light\", or \"gruvbox\"; using dark"));
         }
     }
 
     const QJsonObject network = readObject(root, QStringLiteral("network"), warnings, QStringLiteral("config"));
+    warnUnknownKeys(network,
+                    {QStringLiteral("destinationAddress"),
+                     QStringLiteral("destinationPort"),
+                     QStringLiteral("listenAddress"),
+                     QStringLiteral("listenPort"),
+                     QStringLiteral("multicastGroupAddress"),
+                     QStringLiteral("multicastInterfaceName"),
+                     QStringLiteral("shareAddress"),
+                     QStringLiteral("reuseAddress"),
+                     QStringLiteral("joinMulticast"),
+                     QStringLiteral("multicastLoopback")},
+                    warnings,
+                    QStringLiteral("config.network"));
     config.destinationAddress = readString(network,
                                            QStringLiteral("destinationAddress"),
                                            config.destinationAddress,
@@ -801,8 +1099,44 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                      65535,
                                                      warnings,
                                                      QStringLiteral("config.network")));
+    config.multicastGroupAddress = readString(network,
+                                              QStringLiteral("multicastGroupAddress"),
+                                              config.multicastGroupAddress,
+                                              warnings,
+                                              QStringLiteral("config.network"));
+    config.multicastInterfaceName = readString(network,
+                                               QStringLiteral("multicastInterfaceName"),
+                                               config.multicastInterfaceName,
+                                               warnings,
+                                               QStringLiteral("config.network"));
+    config.shareAddress = readBool(network,
+                                   QStringLiteral("shareAddress"),
+                                   config.shareAddress,
+                                   warnings,
+                                   QStringLiteral("config.network"));
+    config.reuseAddress = readBool(network,
+                                   QStringLiteral("reuseAddress"),
+                                   config.reuseAddress,
+                                   warnings,
+                                   QStringLiteral("config.network"));
+    config.joinMulticast = readBool(network,
+                                    QStringLiteral("joinMulticast"),
+                                    config.joinMulticast,
+                                    warnings,
+                                    QStringLiteral("config.network"));
+    config.multicastLoopback = readBool(network,
+                                        QStringLiteral("multicastLoopback"),
+                                        config.multicastLoopback,
+                                        warnings,
+                                        QStringLiteral("config.network"));
 
     const QJsonObject dis = readObject(root, QStringLiteral("dis"), warnings, QStringLiteral("config"));
+    warnUnknownKeys(dis,
+                    {QStringLiteral("exerciseId"),
+                     QStringLiteral("managerId"),
+                     QStringLiteral("targetId")},
+                    warnings,
+                    QStringLiteral("config.dis"));
     config.exerciseId = static_cast<quint8>(readInt(dis,
                                                     QStringLiteral("exerciseId"),
                                                     config.exerciseId,
@@ -822,7 +1156,15 @@ AppConfig loadAppConfig(QStringList *warnings)
                                          QStringLiteral("config.dis"));
 
     const QJsonObject commands = readObject(root, QStringLiteral("commands"), warnings, QStringLiteral("config"));
+    warnUnknownKeys(commands,
+                    {QStringLiteral("startup"), QStringLiteral("standby"), QStringLiteral("shutdown")},
+                    warnings,
+                    QStringLiteral("config.commands"));
     const QJsonObject startup = readObject(commands, QStringLiteral("startup"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(startup,
+                    {QStringLiteral("actionId")},
+                    warnings,
+                    QStringLiteral("config.commands.startup"));
     config.startupActionId = static_cast<quint32>(readInt(startup,
                                                           QStringLiteral("actionId"),
                                                           static_cast<int>(config.startupActionId),
@@ -831,6 +1173,10 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                           warnings,
                                                           QStringLiteral("config.commands.startup")));
     const QJsonObject standby = readObject(commands, QStringLiteral("standby"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(standby,
+                    {QStringLiteral("reason"), QStringLiteral("frozenBehavior")},
+                    warnings,
+                    QStringLiteral("config.commands.standby"));
     config.standbyReason =
         readReason(standby, QStringLiteral("reason"), config.standbyReason, warnings, QStringLiteral("config.commands.standby"));
     config.standbyFrozenBehavior = static_cast<quint8>(readInt(standby,
@@ -842,6 +1188,10 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                                QStringLiteral("config.commands.standby")));
     const QJsonObject shutdown =
         readObject(commands, QStringLiteral("shutdown"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(shutdown,
+                    {QStringLiteral("actionId")},
+                    warnings,
+                    QStringLiteral("config.commands.shutdown"));
     config.shutdownActionId = static_cast<quint32>(readInt(shutdown,
                                                            QStringLiteral("actionId"),
                                                            static_cast<int>(config.shutdownActionId),
@@ -854,11 +1204,21 @@ AppConfig loadAppConfig(QStringList *warnings)
                                                 QStringLiteral("testFederate"),
                                                 warnings,
                                                 QStringLiteral("config"));
+    warnUnknownKeys(testFederate,
+                    {QStringLiteral("enabled"), QStringLiteral("entityId")},
+                    warnings,
+                    QStringLiteral("config.testFederate"));
     config.testFederateEnabled = readBool(testFederate,
                                           QStringLiteral("enabled"),
                                           config.testFederateEnabled,
                                           warnings,
                                           QStringLiteral("config.testFederate"));
+    config.testFederateId = readEntityIdConfig(testFederate,
+                                               QStringLiteral("entityId"),
+                                               config.testFederateId,
+                                               warnings,
+                                               QStringLiteral("config.testFederate"));
+    validateNetworkConfig(config, warnings);
 
     return config;
 }
@@ -885,7 +1245,8 @@ public:
         themeCombo_ = new QComboBox(central);
         themeCombo_->addItem(QStringLiteral("Dark"), static_cast<int>(Theme::Dark));
         themeCombo_->addItem(QStringLiteral("Light"), static_cast<int>(Theme::Light));
-        themeCombo_->setFixedWidth(120);
+        themeCombo_->addItem(QStringLiteral("Gruvbox"), static_cast<int>(Theme::Gruvbox));
+        themeCombo_->setFixedWidth(140);
         settingsLayout->addWidget(themeCombo_);
         settingsLayout->addStretch(1);
 
@@ -903,16 +1264,13 @@ public:
         auto *disGroup = new QGroupBox(QStringLiteral("DIS Identity"), central);
         auto *disLayout = new QGridLayout(disGroup);
         exerciseSpin_ = makeSmallSpinBox(disGroup, 1, 255, appConfig_.exerciseId);
-        managerSiteSpin_ = makeSmallSpinBox(disGroup, 0, 65535, appConfig_.managerId.site);
-        managerApplicationSpin_ = makeSmallSpinBox(disGroup, 0, 65535, appConfig_.managerId.application);
-        managerEntitySpin_ = makeSmallSpinBox(disGroup, 0, 65535, appConfig_.managerId.entity);
-        targetSiteSpin_ = makeSmallSpinBox(disGroup, 0, 65535, appConfig_.targetId.site);
-        targetApplicationSpin_ = makeSmallSpinBox(disGroup, 0, 65535, appConfig_.targetId.application);
-        targetEntitySpin_ = makeSmallSpinBox(disGroup, 0, 65535, appConfig_.targetId.entity);
-        startupActionSpin_ = makeActionSpinBox(disGroup, appConfig_.startupActionId);
-        shutdownActionSpin_ = makeActionSpinBox(disGroup, appConfig_.shutdownActionId);
-        standbyReasonCombo_ = makeStandbyReasonCombo(disGroup, appConfig_.standbyReason);
-        standbyFrozenBehaviorSpin_ = makeSmallSpinBox(disGroup, 0, 255, appConfig_.standbyFrozenBehavior);
+        managerSiteSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.site);
+        managerApplicationSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.application);
+        managerEntitySpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.entity);
+        targetSiteSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.targetId.site);
+        targetApplicationSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.targetId.application);
+        targetEntitySpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.targetId.entity);
+        targetBroadcastCheck_ = new QCheckBox(QStringLiteral("Broadcast"), disGroup);
 
         disLayout->addWidget(new QLabel(QStringLiteral("Exercise")), 0, 0);
         disLayout->addWidget(exerciseSpin_, 0, 1);
@@ -924,13 +1282,9 @@ public:
         disLayout->addWidget(targetSiteSpin_, 2, 1);
         disLayout->addWidget(targetApplicationSpin_, 2, 2);
         disLayout->addWidget(targetEntitySpin_, 2, 3);
-        disLayout->addWidget(new QLabel(QStringLiteral("Startup/shutdown action ID")), 3, 0);
-        disLayout->addWidget(startupActionSpin_, 3, 1);
-        disLayout->addWidget(shutdownActionSpin_, 3, 2);
-        disLayout->addWidget(new QLabel(QStringLiteral("Standby reason/frozen behavior")), 4, 0);
-        disLayout->addWidget(standbyReasonCombo_, 4, 1, 1, 2);
-        disLayout->addWidget(standbyFrozenBehaviorSpin_, 4, 3);
-        disLayout->setColumnStretch(4, 1);
+        disLayout->addWidget(targetBroadcastCheck_, 2, 4);
+        disLayout->setColumnStretch(5, 1);
+        connect(targetBroadcastCheck_, &QCheckBox::toggled, this, &MainWindow::setTargetBroadcast);
 
         auto *stateGroup = new QGroupBox(QStringLiteral("State Commands"), central);
         auto *stateLayout = new QHBoxLayout(stateGroup);
@@ -940,11 +1294,28 @@ public:
         addStateButton(stateLayout, QStringLiteral("Shutdown"), SimulationState::Shutdown);
 
         auto *testGroup = new QGroupBox(QStringLiteral("Test Federate"), central);
-        auto *testLayout = new QHBoxLayout(testGroup);
+        auto *testLayout = new QGridLayout(testGroup);
         dummyFederateStatusLabel_ = new QLabel(QStringLiteral("Configured: enabled, waiting to bind"), testGroup);
-        testLayout->addWidget(dummyFederateStatusLabel_);
-        testLayout->addStretch(1);
+        dummyFederateStatusLabel_->setWordWrap(true);
+        dummyFederateSiteSpin_ = makeSmallSpinBox(testGroup, 0, 65535, appConfig_.testFederateId.site);
+        dummyFederateApplicationSpin_ =
+            makeSmallSpinBox(testGroup, 0, 65535, appConfig_.testFederateId.application);
+        dummyFederateEntitySpin_ = makeSmallSpinBox(testGroup, 0, 65535, appConfig_.testFederateId.entity);
+        testGroup->setMinimumWidth(260);
+        testLayout->addWidget(dummyFederateStatusLabel_, 0, 0, 1, 4);
+        testLayout->addWidget(new QLabel(QStringLiteral("Entity ID")), 1, 0);
+        testLayout->addWidget(dummyFederateSiteSpin_, 1, 1);
+        testLayout->addWidget(dummyFederateApplicationSpin_, 1, 2);
+        testLayout->addWidget(dummyFederateEntitySpin_, 1, 3);
+        testLayout->setColumnStretch(4, 1);
         testGroup->setVisible(appConfig_.testFederateEnabled);
+
+        auto *identityLayout = new QHBoxLayout();
+        identityLayout->setSpacing(12);
+        identityLayout->addWidget(disGroup, 2);
+        if (appConfig_.testFederateEnabled) {
+            identityLayout->addWidget(testGroup, 1);
+        }
 
         responseTable_ = new QTableWidget(0, 5, central);
         responseTable_->setHorizontalHeaderLabels(
@@ -966,19 +1337,15 @@ public:
 
         rootLayout->addLayout(settingsLayout);
         rootLayout->addWidget(networkGroup);
-        rootLayout->addWidget(disGroup);
+        rootLayout->addLayout(identityLayout);
         rootLayout->addWidget(stateGroup);
-        if (appConfig_.testFederateEnabled) {
-            rootLayout->addWidget(testGroup);
-        }
-        rootLayout->addWidget(new QLabel(QStringLiteral("Received component responses"), central));
         rootLayout->addWidget(responseTable_, 1);
         rootLayout->addWidget(log_, 1);
         setCentralWidget(central);
         resize(980, 720);
 
         socket_ = new QUdpSocket(this);
-        socket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
+        socket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, appConfig_.multicastLoopback ? 1 : 0);
         connect(socket_, &QUdpSocket::readyRead, this, &MainWindow::readDatagrams);
         dummyFederateSocket_ = new QUdpSocket(this);
         connect(dummyFederateSocket_, &QUdpSocket::readyRead, this, &MainWindow::readDummyFederateDatagrams);
@@ -1026,31 +1393,6 @@ private:
         return spinBox;
     }
 
-    static QSpinBox *makeActionSpinBox(QWidget *parent, int value)
-    {
-        auto *spinBox = new QSpinBox(parent);
-        spinBox->setRange(0, 2147483647);
-        spinBox->setValue(value);
-        return spinBox;
-    }
-
-    static QComboBox *makeStandbyReasonCombo(QWidget *parent, quint8 value)
-    {
-        auto *comboBox = new QComboBox(parent);
-        for (const auto &option : StopFreezeReasonOptions) {
-            comboBox->addItem(QStringLiteral("%1 (%2)")
-                                  .arg(QString::fromLatin1(option.label))
-                                  .arg(option.value),
-                              option.value);
-        }
-
-        const int index = comboBox->findData(value);
-        if (index >= 0) {
-            comboBox->setCurrentIndex(index);
-        }
-        return comboBox;
-    }
-
     static bool parseAddressText(const QString &text, QHostAddress *address)
     {
         const QString trimmed = text.trimmed();
@@ -1065,6 +1407,183 @@ private:
 
         *address = parsed;
         return true;
+    }
+
+    QUdpSocket::BindMode udpBindMode() const
+    {
+        QUdpSocket::BindMode mode = QUdpSocket::DefaultForPlatform;
+        if (appConfig_.shareAddress) {
+            mode |= QUdpSocket::ShareAddress;
+        }
+        if (appConfig_.reuseAddress) {
+            mode |= QUdpSocket::ReuseAddressHint;
+        }
+        return mode;
+    }
+
+    QHostAddress configuredMulticastGroup(QString *error = nullptr) const
+    {
+        QHostAddress group;
+        if (!appConfig_.multicastGroupAddress.trimmed().isEmpty()) {
+            if (!parseAddressText(appConfig_.multicastGroupAddress, &group)) {
+                if (error != nullptr) {
+                    *error = QStringLiteral("Invalid multicast group address %1")
+                                 .arg(appConfig_.multicastGroupAddress);
+                }
+                return {};
+            }
+            if (!group.isMulticast()) {
+                if (error != nullptr) {
+                    *error = QStringLiteral("Configured multicast group %1 is not multicast")
+                                 .arg(group.toString());
+                }
+                return {};
+            }
+            return group;
+        }
+
+        if (parseAddressText(destinationAddressEdit_->text(), &group) && group.isMulticast()) {
+            return group;
+        }
+
+        return {};
+    }
+
+    QNetworkInterface configuredMulticastInterface(QString *error = nullptr) const
+    {
+        const QString interfaceName = appConfig_.multicastInterfaceName.trimmed();
+        if (interfaceName.isEmpty()) {
+            return {};
+        }
+
+        const QNetworkInterface interface = QNetworkInterface::interfaceFromName(interfaceName);
+        if (interface.isValid()) {
+            return interface;
+        }
+
+        if (error != nullptr) {
+            *error = QStringLiteral("Unknown multicast interface %1").arg(interfaceName);
+        }
+        return {};
+    }
+
+    static bool sameNetworkInterface(const QNetworkInterface &left, const QNetworkInterface &right)
+    {
+        if (!left.isValid() && !right.isValid()) {
+            return true;
+        }
+        return left.isValid() && right.isValid() && left.index() == right.index()
+            && left.name() == right.name();
+    }
+
+    void clearListenMulticastGroup()
+    {
+        if (!joinedListenMulticastGroup_.isNull()) {
+            if (joinedListenMulticastInterface_.isValid()) {
+                socket_->leaveMulticastGroup(joinedListenMulticastGroup_, joinedListenMulticastInterface_);
+            } else {
+                socket_->leaveMulticastGroup(joinedListenMulticastGroup_);
+            }
+            joinedListenMulticastGroup_ = QHostAddress();
+            joinedListenMulticastInterface_ = QNetworkInterface();
+        }
+    }
+
+    void clearDummyFederateMulticastGroup()
+    {
+        if (!joinedDummyFederateMulticastGroup_.isNull()) {
+            if (joinedDummyFederateMulticastInterface_.isValid()) {
+                dummyFederateSocket_->leaveMulticastGroup(joinedDummyFederateMulticastGroup_,
+                                                         joinedDummyFederateMulticastInterface_);
+            } else {
+                dummyFederateSocket_->leaveMulticastGroup(joinedDummyFederateMulticastGroup_);
+            }
+            joinedDummyFederateMulticastGroup_ = QHostAddress();
+            joinedDummyFederateMulticastInterface_ = QNetworkInterface();
+        }
+    }
+
+    bool updateListenMulticastGroup()
+    {
+        if (!appConfig_.joinMulticast) {
+            clearListenMulticastGroup();
+            return true;
+        }
+
+        QString groupError;
+        const QHostAddress group = configuredMulticastGroup(&groupError);
+        if (!groupError.isEmpty()) {
+            statusBar()->showMessage(groupError);
+            return false;
+        }
+        if (group.isNull()) {
+            clearListenMulticastGroup();
+            return true;
+        }
+
+        QString interfaceError;
+        const QNetworkInterface interface = configuredMulticastInterface(&interfaceError);
+        if (!interfaceError.isEmpty()) {
+            statusBar()->showMessage(interfaceError);
+            return false;
+        }
+
+        if (joinedListenMulticastGroup_ == group
+            && sameNetworkInterface(joinedListenMulticastInterface_, interface)) {
+            return true;
+        }
+
+        clearListenMulticastGroup();
+        const bool joined = interface.isValid() ? socket_->joinMulticastGroup(group, interface)
+                                                : socket_->joinMulticastGroup(group);
+        if (!joined) {
+            statusBar()->showMessage(QStringLiteral("Listen multicast join failed for %1: %2")
+                                         .arg(group.toString(), socket_->errorString()));
+            return false;
+        }
+
+        joinedListenMulticastGroup_ = group;
+        joinedListenMulticastInterface_ = interface;
+        QString interfaceDetail;
+        if (interface.isValid()) {
+            interfaceDetail = QStringLiteral(" on %1").arg(interface.name());
+        }
+        appendLog(QStringLiteral("Listen socket joined multicast group %1%2")
+                      .arg(group.toString(), interfaceDetail));
+        return true;
+    }
+
+    void updateDummyFederateMulticastGroup(const QHostAddress &group)
+    {
+        if (!appConfig_.joinMulticast || !group.isMulticast()) {
+            clearDummyFederateMulticastGroup();
+            return;
+        }
+
+        QString interfaceError;
+        const QNetworkInterface interface = configuredMulticastInterface(&interfaceError);
+        if (!interfaceError.isEmpty()) {
+            appendLog(interfaceError);
+            return;
+        }
+
+        if (joinedDummyFederateMulticastGroup_ == group
+            && sameNetworkInterface(joinedDummyFederateMulticastInterface_, interface)) {
+            return;
+        }
+
+        clearDummyFederateMulticastGroup();
+        const bool joined = interface.isValid() ? dummyFederateSocket_->joinMulticastGroup(group, interface)
+                                                : dummyFederateSocket_->joinMulticastGroup(group);
+        if (!joined) {
+            appendLog(QStringLiteral("Dummy federate multicast join failed for %1: %2")
+                          .arg(group.toString())
+                          .arg(dummyFederateSocket_->errorString()));
+            return;
+        }
+
+        joinedDummyFederateMulticastGroup_ = group;
+        joinedDummyFederateMulticastInterface_ = interface;
     }
 
     void addStateButton(QHBoxLayout *layout, const QString &label, SimulationState state)
@@ -1085,10 +1604,10 @@ private:
         config.exerciseId = static_cast<quint8>(exerciseSpin_->value());
         config.managerId = makeEntityId(managerSiteSpin_, managerApplicationSpin_, managerEntitySpin_);
         config.targetId = makeEntityId(targetSiteSpin_, targetApplicationSpin_, targetEntitySpin_);
-        config.startupActionId = static_cast<quint32>(startupActionSpin_->value());
-        config.shutdownActionId = static_cast<quint32>(shutdownActionSpin_->value());
-        config.standbyReason = static_cast<quint8>(standbyReasonCombo_->currentData().toUInt());
-        config.standbyFrozenBehavior = static_cast<quint8>(standbyFrozenBehaviorSpin_->value());
+        config.startupActionId = appConfig_.startupActionId;
+        config.shutdownActionId = appConfig_.shutdownActionId;
+        config.standbyReason = appConfig_.standbyReason;
+        config.standbyFrozenBehavior = appConfig_.standbyFrozenBehavior;
 
         if (ok != nullptr) {
             *ok = destinationOk && listenOk;
@@ -1096,11 +1615,52 @@ private:
         return config;
     }
 
+    EntityId currentTestFederateId() const
+    {
+        return makeEntityId(dummyFederateSiteSpin_,
+                            dummyFederateApplicationSpin_,
+                            dummyFederateEntitySpin_);
+    }
+
+    EntityId currentTargetId() const
+    {
+        return makeEntityId(targetSiteSpin_, targetApplicationSpin_, targetEntitySpin_);
+    }
+
     static EntityId makeEntityId(const QSpinBox *site, const QSpinBox *application, const QSpinBox *entity)
     {
         return EntityId{static_cast<quint16>(site->value()),
                         static_cast<quint16>(application->value()),
                         static_cast<quint16>(entity->value())};
+    }
+
+    void setTargetIdControls(const EntityId &entityId)
+    {
+        targetSiteSpin_->setValue(entityId.site);
+        targetApplicationSpin_->setValue(entityId.application);
+        targetEntitySpin_->setValue(entityId.entity);
+    }
+
+    void setTargetIdControlsEnabled(bool enabled)
+    {
+        targetSiteSpin_->setEnabled(enabled);
+        targetApplicationSpin_->setEnabled(enabled);
+        targetEntitySpin_->setEnabled(enabled);
+    }
+
+    void setTargetBroadcast(bool enabled)
+    {
+        if (enabled) {
+            savedTargetIdBeforeBroadcast_ = currentTargetId();
+            setTargetIdControls(EntityId{BroadcastEntityIdValue,
+                                         BroadcastEntityIdValue,
+                                         BroadcastEntityIdValue});
+            setTargetIdControlsEnabled(false);
+            return;
+        }
+
+        setTargetIdControlsEnabled(true);
+        setTargetIdControls(savedTargetIdBeforeBroadcast_);
     }
 
     void bindListenSocket()
@@ -1117,6 +1677,9 @@ private:
         if (socket_->state() == QAbstractSocket::BoundState
             && boundAddress_ == listenAddress
             && boundPort_ == listenPort) {
+            if (!updateListenMulticastGroup()) {
+                return;
+            }
             if (statusBar()->currentMessage().startsWith(QStringLiteral("Invalid "))) {
                 statusBar()->showMessage(listeningMessage);
             }
@@ -1124,17 +1687,19 @@ private:
         }
 
         socket_->close();
-        const bool bound = socket_->bind(listenAddress,
-                                         listenPort,
-                                         QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+        joinedListenMulticastGroup_ = QHostAddress();
+        const bool bound = socket_->bind(listenAddress, listenPort, udpBindMode());
         if (!bound) {
             statusBar()->showMessage(QStringLiteral("Listen bind failed: %1").arg(socket_->errorString()));
             return;
         }
 
+        socket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, appConfig_.multicastLoopback ? 1 : 0);
         boundAddress_ = listenAddress;
         boundPort_ = listenPort;
-        statusBar()->showMessage(listeningMessage);
+        if (updateListenMulticastGroup()) {
+            statusBar()->showMessage(listeningMessage);
+        }
     }
 
     void bindDummyFederateSocket()
@@ -1156,19 +1721,23 @@ private:
         if (dummyFederateSocket_->state() == QAbstractSocket::BoundState
             && dummyFederateBoundAddress_ == config.destinationAddress
             && dummyFederateBoundPort_ == config.destinationPort) {
+            updateDummyFederateMulticastGroup(config.destinationAddress);
+            dummyFederateSocket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption,
+                                                  appConfig_.multicastLoopback ? 1 : 0);
             if (dummyFederateStatusLabel_ != nullptr) {
-                dummyFederateStatusLabel_->setText(QStringLiteral("Running on %1:%2")
+                dummyFederateStatusLabel_->setText(QStringLiteral("Running on %1:%2 as %3")
                                                        .arg(config.destinationAddress.toString())
-                                                       .arg(config.destinationPort));
+                                                       .arg(config.destinationPort)
+                                                       .arg(entityIdString(currentTestFederateId())));
             }
             return;
         }
 
         dummyFederateSocket_->close();
+        joinedDummyFederateMulticastGroup_ = QHostAddress();
         const QHostAddress bindAddress =
             config.destinationAddress.isMulticast() ? QHostAddress::AnyIPv4 : config.destinationAddress;
-        const bool bound = dummyFederateSocket_->bind(
-            bindAddress, config.destinationPort, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+        const bool bound = dummyFederateSocket_->bind(bindAddress, config.destinationPort, udpBindMode());
         if (!bound) {
             appendLog(QStringLiteral("Dummy federate bind failed on %1:%2: %3")
                           .arg(bindAddress.toString())
@@ -1182,20 +1751,16 @@ private:
             return;
         }
 
-        if (config.destinationAddress.isMulticast()
-            && !dummyFederateSocket_->joinMulticastGroup(config.destinationAddress)) {
-            appendLog(QStringLiteral("Dummy federate multicast join failed for %1: %2")
-                          .arg(config.destinationAddress.toString())
-                          .arg(dummyFederateSocket_->errorString()));
-        }
-
-        dummyFederateSocket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, 1);
+        updateDummyFederateMulticastGroup(config.destinationAddress);
+        dummyFederateSocket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption,
+                                              appConfig_.multicastLoopback ? 1 : 0);
         dummyFederateBoundAddress_ = config.destinationAddress;
         dummyFederateBoundPort_ = config.destinationPort;
         if (dummyFederateStatusLabel_ != nullptr) {
-            dummyFederateStatusLabel_->setText(QStringLiteral("Running on %1:%2")
+            dummyFederateStatusLabel_->setText(QStringLiteral("Running on %1:%2 as %3")
                                                    .arg(config.destinationAddress.toString())
-                                                   .arg(config.destinationPort));
+                                                   .arg(config.destinationPort)
+                                                   .arg(entityIdString(currentTestFederateId())));
         }
         appendLog(QStringLiteral("Dummy federate listening on %1:%2")
                       .arg(config.destinationAddress.toString())
@@ -1287,15 +1852,32 @@ private:
         }
 
         const quint32 requestId = requestIdFromResponse(datagram, static_cast<quint8>(pduType));
+        const EntityId receivingEntity = readEntityId(datagram, 18);
+        const EntityId federateId = currentTestFederateId();
+        if (!entityIdsMatch(receivingEntity, federateId)) {
+            appendLog(QStringLiteral("Dummy federate ignored %1 request %2 for entity %3; configured as %4")
+                          .arg(pduTypeName(static_cast<quint8>(pduType)))
+                          .arg(requestId)
+                          .arg(entityIdString(receivingEntity))
+                          .arg(entityIdString(federateId)));
+            return;
+        }
+
         DisConfig responseConfig;
         responseConfig.exerciseId = static_cast<quint8>(datagram[1]);
-        responseConfig.managerId = readEntityId(datagram, 18);
+        responseConfig.managerId = receivingEntity;
         responseConfig.targetId = readEntityId(datagram, 12);
 
         const QByteArray response = pduType == ActionRequestPdu
             ? makeActionResponsePdu(responseConfig, requestId)
             : makeAcknowledgePdu(responseConfig, requestId, pduType);
-        const auto written = dummyFederateSocket_->writeDatagram(response, sender, senderPort);
+        bool ok = false;
+        const auto config = currentConfig(&ok);
+        const QHostAddress responseAddress =
+            ok && config.destinationAddress.isMulticast() ? config.destinationAddress : sender;
+        const quint16 responsePort =
+            ok && config.destinationAddress.isMulticast() ? config.destinationPort : senderPort;
+        const auto written = dummyFederateSocket_->writeDatagram(response, responseAddress, responsePort);
         if (written != response.size()) {
             appendLog(QStringLiteral("Dummy federate failed to acknowledge request %1: %2")
                           .arg(requestId)
@@ -1308,6 +1890,11 @@ private:
                       .arg(requestId)
                       .arg(sender.toString())
                       .arg(senderPort));
+        appendLog(QStringLiteral("Dummy federate sent %1 response %2 to %3:%4")
+                      .arg(pduType == ActionRequestPdu ? QStringLiteral("Action") : QStringLiteral("Acknowledge"))
+                      .arg(requestId)
+                      .arg(responseAddress.toString())
+                      .arg(responsePort));
     }
 
     void recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
@@ -1383,17 +1970,22 @@ private:
     QSpinBox *targetSiteSpin_ = nullptr;
     QSpinBox *targetApplicationSpin_ = nullptr;
     QSpinBox *targetEntitySpin_ = nullptr;
-    QSpinBox *startupActionSpin_ = nullptr;
-    QSpinBox *shutdownActionSpin_ = nullptr;
-    QComboBox *standbyReasonCombo_ = nullptr;
-    QSpinBox *standbyFrozenBehaviorSpin_ = nullptr;
+    QCheckBox *targetBroadcastCheck_ = nullptr;
+    EntityId savedTargetIdBeforeBroadcast_;
     QLabel *dummyFederateStatusLabel_ = nullptr;
+    QSpinBox *dummyFederateSiteSpin_ = nullptr;
+    QSpinBox *dummyFederateApplicationSpin_ = nullptr;
+    QSpinBox *dummyFederateEntitySpin_ = nullptr;
     QTableWidget *responseTable_ = nullptr;
     QPlainTextEdit *log_ = nullptr;
     QUdpSocket *socket_ = nullptr;
     QUdpSocket *dummyFederateSocket_ = nullptr;
     QHostAddress boundAddress_;
     QHostAddress dummyFederateBoundAddress_;
+    QHostAddress joinedListenMulticastGroup_;
+    QHostAddress joinedDummyFederateMulticastGroup_;
+    QNetworkInterface joinedListenMulticastInterface_;
+    QNetworkInterface joinedDummyFederateMulticastInterface_;
     quint16 boundPort_ = 0;
     quint16 dummyFederateBoundPort_ = 0;
     quint32 nextRequestId_ = 1;
@@ -1410,7 +2002,7 @@ int main(int argc, char *argv[])
     MainWindow window;
     window.show();
 
-    return app.exec();
+    return QApplication::exec();
 }
 
 #include "main.moc"
