@@ -11,6 +11,10 @@
 #include <QtCore/QTextStream>
 #include <QtCore/QTime>
 #include <QtCore/QTimer>
+#include <QtGui/QColor>
+#include <QtGui/QFont>
+#include <QtGui/QTextCharFormat>
+#include <QtGui/QTextCursor>
 #include <QtNetwork/QNetworkAddressEntry>
 #include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QApplication>
@@ -214,7 +218,7 @@ MainWindow::MainWindow(QWidget *parent)
         appendLog(QStringLiteral("Loaded defaults from %1").arg(appConfig_.configPath));
     }
     for (const QString &warning : configWarnings_) {
-        appendLog(QStringLiteral("Config: %1").arg(warning));
+        appendLog(QStringLiteral("Config: %1").arg(warning), LogLevel::Warn);
     }
 
     bindListenSocket();
@@ -500,6 +504,7 @@ auto MainWindow::updateListenMulticastGroup() -> bool
     const QHostAddress group = configuredMulticastGroup(&groupError);
     if (!groupError.isEmpty()) {
         statusBar()->showMessage(groupError);
+        appendLog(groupError, LogLevel::Warn);
         return false;
     }
     if (group.isNull()) {
@@ -511,6 +516,7 @@ auto MainWindow::updateListenMulticastGroup() -> bool
     const QNetworkInterface interface = configuredMulticastInterface(&interfaceError);
     if (!interfaceError.isEmpty()) {
         statusBar()->showMessage(interfaceError);
+        appendLog(interfaceError, LogLevel::Warn);
         return false;
     }
 
@@ -523,8 +529,10 @@ auto MainWindow::updateListenMulticastGroup() -> bool
     const bool joined = interface.isValid() ? socket_->joinMulticastGroup(group, interface)
                                             : socket_->joinMulticastGroup(group);
     if (!joined) {
-        statusBar()->showMessage(QStringLiteral("Listen multicast join failed for %1: %2")
-                                     .arg(group.toString(), socket_->errorString()));
+        const QString message = QStringLiteral("Listen multicast join failed for %1: %2")
+                                    .arg(group.toString(), socket_->errorString());
+        statusBar()->showMessage(message);
+        appendLog(message, LogLevel::Error);
         return false;
     }
 
@@ -549,7 +557,7 @@ void MainWindow::updateDummyFederateMulticastGroup(const QHostAddress &group)
     QString interfaceError;
     const QNetworkInterface interface = configuredMulticastInterface(&interfaceError);
     if (!interfaceError.isEmpty()) {
-        appendLog(interfaceError);
+        appendLog(interfaceError, LogLevel::Warn);
         return;
     }
 
@@ -563,7 +571,8 @@ void MainWindow::updateDummyFederateMulticastGroup(const QHostAddress &group)
                                             : dummyFederateSocket_->joinMulticastGroup(group);
     if (!joined) {
         appendLog(QStringLiteral("Dummy federate multicast join failed for %1: %2")
-                      .arg(group.toString(), dummyFederateSocket_->errorString()));
+                      .arg(group.toString(), dummyFederateSocket_->errorString()),
+                  LogLevel::Error);
         return;
     }
 
@@ -712,11 +721,13 @@ void MainWindow::bindListenSocket()
     QHostAddress listenAddress;
     if (!parseConfigAddress(listenAddressEdit_->text(), &listenAddress)) {
         statusBar()->showMessage(QStringLiteral("Invalid listen address"));
+        appendLog(QStringLiteral("Invalid listen address"), LogLevel::Warn);
         return;
     }
     QHostAddress destinationAddress;
     if (!parseConfigAddress(destinationAddressEdit_->text(), &destinationAddress)) {
         statusBar()->showMessage(QStringLiteral("Invalid destination address"));
+        appendLog(QStringLiteral("Invalid destination address"), LogLevel::Warn);
         return;
     }
 
@@ -742,6 +753,7 @@ void MainWindow::bindListenSocket()
     const bool bound = socket_->bind(bindAddress, listenPort, udpBindMode());
     if (!bound) {
         statusBar()->showMessage(QStringLiteral("Listen bind failed: %1").arg(socket_->errorString()));
+        appendLog(QStringLiteral("Listen bind failed: %1").arg(socket_->errorString()), LogLevel::Error);
         return;
     }
 
@@ -763,6 +775,7 @@ void MainWindow::bindDummyFederateSocket()
     const auto config = currentConfig(&configOk);
     if (!configOk) {
         statusBar()->showMessage(QStringLiteral("Invalid network address"));
+        appendLog(QStringLiteral("Invalid network address"), LogLevel::Warn);
         if (dummyFederateStatusLabel_ != nullptr) {
             dummyFederateStatusLabel_->setText(QStringLiteral("Configured: enabled, waiting for valid network settings"));
         }
@@ -791,7 +804,8 @@ void MainWindow::bindDummyFederateSocket()
         appendLog(QStringLiteral("Dummy federate bind failed on %1:%2: %3")
                       .arg(bindAddress.toString())
                       .arg(config.destinationPort)
-                      .arg(dummyFederateSocket_->errorString()));
+                      .arg(dummyFederateSocket_->errorString()),
+                  LogLevel::Error);
         if (dummyFederateStatusLabel_ != nullptr) {
             dummyFederateStatusLabel_->setText(QStringLiteral("Bind failed on %1:%2")
                                                    .arg(bindAddress.toString())
@@ -822,6 +836,8 @@ void MainWindow::sendStateCommand(SimulationState state)
     if (!configOk) {
         QMessageBox::warning(this, QStringLiteral("Invalid Configuration"),
                              QStringLiteral("Enter valid destination and listen IP addresses."));
+        appendLog(QStringLiteral("Cannot send state command because destination or listen address is invalid"),
+                  LogLevel::Warn);
         return;
     }
 
@@ -846,7 +862,8 @@ void MainWindow::sendStateCommand(SimulationState state)
         appendLog(QStringLiteral("Failed to send %1 request %2: %3")
                       .arg(stateName(state))
                       .arg(requestId)
-                      .arg(socket_->errorString()));
+                      .arg(socket_->errorString()),
+                  LogLevel::Error);
         return;
     }
 
@@ -909,7 +926,8 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
                       .arg(pduTypeName(static_cast<quint8>(pduType)))
                       .arg(requestId)
                       .arg(entityIdString(receivingEntity))
-                      .arg(entityIdString(federateId)));
+                      .arg(entityIdString(federateId)),
+                  LogLevel::Warn);
         return;
     }
 
@@ -931,7 +949,8 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
     if (written != response.size()) {
         appendLog(QStringLiteral("Dummy federate failed to acknowledge request %1: %2")
                       .arg(requestId)
-                      .arg(dummyFederateSocket_->errorString()));
+                      .arg(dummyFederateSocket_->errorString()),
+                  LogLevel::Error);
         return;
     }
 
@@ -996,13 +1015,52 @@ void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &
                   .arg(senderPort));
 }
 
-void MainWindow::appendLog(const QString &message)
+void MainWindow::appendLog(const QString &message, LogLevel level)
 {
+    if (!shouldLog(level, appConfig_.logLevel)) {
+        return;
+    }
+
     const QString line = QStringLiteral("[%1] %2")
                              .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss"),
-                                  message);
-    log_->appendPlainText(line);
+                                  QStringLiteral("%1: %2").arg(logLevelLabel(level), message));
+    QTextCharFormat format;
+    if (level == LogLevel::Warn) {
+        format.setForeground(QColor(214, 137, 16));
+        format.setFontWeight(QFont::DemiBold);
+    } else if (level == LogLevel::Error) {
+        format.setForeground(QColor(203, 36, 49));
+        format.setFontWeight(QFont::Bold);
+    }
+
+    QTextCursor cursor = log_->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    if (!log_->document()->isEmpty()) {
+        cursor.insertBlock();
+    }
+    cursor.insertText(line, format);
+    log_->setTextCursor(cursor);
+    log_->ensureCursorVisible();
     writeLogFileLine(&logFile_, line);
+}
+
+auto MainWindow::shouldLog(LogLevel messageLevel, LogLevel configuredLevel) -> bool
+{
+    return static_cast<quint8>(messageLevel) >= static_cast<quint8>(configuredLevel);
+}
+
+auto MainWindow::logLevelLabel(LogLevel level) -> QString
+{
+    switch (level) {
+    case LogLevel::Debug:
+        return QStringLiteral("DEBUG");
+    case LogLevel::Warn:
+        return QStringLiteral("WARN");
+    case LogLevel::Error:
+        return QStringLiteral("ERROR");
+    }
+
+    return QStringLiteral("DEBUG");
 }
 
 void MainWindow::setupLogFiles()
@@ -1012,7 +1070,8 @@ void MainWindow::setupLogFiles()
         logFile_.setFileName(path);
         QDir().mkpath(QFileInfo(path).absolutePath());
         if (!logFile_.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-            appendLog(QStringLiteral("Could not open log file %1: %2").arg(path, logFile_.errorString()));
+            appendLog(QStringLiteral("Could not open log file %1: %2").arg(path, logFile_.errorString()),
+                      LogLevel::Error);
         }
     }
 
@@ -1021,7 +1080,8 @@ void MainWindow::setupLogFiles()
         messageLogFile_.setFileName(path);
         QDir().mkpath(QFileInfo(path).absolutePath());
         if (!messageLogFile_.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-            appendLog(QStringLiteral("Could not open message log file %1: %2").arg(path, messageLogFile_.errorString()));
+            appendLog(QStringLiteral("Could not open message log file %1: %2").arg(path, messageLogFile_.errorString()),
+                      LogLevel::Error);
         }
     }
 }

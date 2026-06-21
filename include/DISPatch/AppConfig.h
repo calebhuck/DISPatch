@@ -10,6 +10,12 @@
 
 namespace dispatch {
 
+enum class LogLevel : quint8 {
+    Debug,
+    Warn,
+    Error
+};
+
 struct AppConfig {
     QString destinationAddress = QStringLiteral("239.1.2.3");
     quint16 destinationPort = 3000;
@@ -32,6 +38,7 @@ struct AppConfig {
     Theme theme = Theme::Dark;
     bool logs = false;
     QString logFile = QStringLiteral("DISPatch.log");
+    LogLevel logLevel = LogLevel::Debug;
     bool messageLogs = false;
     QString messageLogFile = QStringLiteral("DISPatch_messages.log");
     bool testFederateEnabled = false;

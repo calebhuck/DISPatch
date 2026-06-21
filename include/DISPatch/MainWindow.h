@@ -77,7 +77,9 @@ private:
                           quint16 peerPort,
                           const QString &direction);
     void recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort);
-    void appendLog(const QString &message);
+    void appendLog(const QString &message, LogLevel level = LogLevel::Debug);
+    static auto shouldLog(LogLevel messageLevel, LogLevel configuredLevel) -> bool;
+    static auto logLevelLabel(LogLevel level) -> QString;
     void setupLogFiles();
     auto configuredLogPath(const QString &path) const -> QString;
     void writeLogFileLine(QFile *file, const QString &line);

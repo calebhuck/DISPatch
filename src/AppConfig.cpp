@@ -90,6 +90,7 @@ auto logConfigKeys() -> const QStringList &
 {
     static const QStringList keys{QStringLiteral("logs"),
                                   QStringLiteral("logFile"),
+                                  QStringLiteral("logLevel"),
                                   QStringLiteral("messageLogs"),
                                   QStringLiteral("messageLogFile")};
     return keys;
@@ -125,6 +126,28 @@ auto parseTheme(const QJsonValue &value, Theme *theme) -> bool
     }
     if (key == QStringLiteral("gruvbox")) {
         *theme = Theme::Gruvbox;
+        return true;
+    }
+    return false;
+}
+
+auto parseLogLevel(const QJsonValue &value, LogLevel *level) -> bool
+{
+    if (!value.isString()) {
+        return false;
+    }
+
+    const QString key = normalizedConfigKey(value.toString());
+    if (key == QStringLiteral("debug")) {
+        *level = LogLevel::Debug;
+        return true;
+    }
+    if (key == QStringLiteral("warn") || key == QStringLiteral("warning")) {
+        *level = LogLevel::Warn;
+        return true;
+    }
+    if (key == QStringLiteral("error")) {
+        *level = LogLevel::Error;
         return true;
     }
     return false;
@@ -637,6 +660,14 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
                                 config.logFile,
                                 warnings,
                                 QStringLiteral("config.log"));
+    if (log.contains(QStringLiteral("logLevel"))) {
+        LogLevel logLevel = config.logLevel;
+        if (parseLogLevel(log.value(QStringLiteral("logLevel")), &logLevel)) {
+            config.logLevel = logLevel;
+        } else {
+            warnings->append(QStringLiteral("config.log.logLevel must be \"debug\", \"warn\", or \"error\"; using debug"));
+        }
+    }
     config.messageLogs = readBool(log,
                                   QStringLiteral("messageLogs"),
                                   config.messageLogs,

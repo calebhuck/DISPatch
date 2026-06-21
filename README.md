@@ -69,10 +69,12 @@ The message table is a socket-level PDU trace. It shows manager and in-process
 test federate sends, and every datagram each socket actually receives. No
 self-looped multicast or localhost packets are hidden or synthesized.
 
-The optional `log` section can mirror the UI logs to files. Set `logs` to true
-to append the event log to `logFile`, and set `messageLogs` to true to append
-the PDU trace to `messageLogFile`. Relative file paths are resolved next to the
-loaded config file.
+The optional `log` section can mirror the UI logs to files. `logLevel` can be
+`debug`, `warn`, or `error`; event log entries below that level are hidden from
+the UI log and event log file. Warnings and errors are highlighted in the UI.
+Set `logs` to true to append the filtered event log to `logFile`, and set
+`messageLogs` to true to append the unfiltered PDU trace to `messageLogFile`.
+Relative file paths are resolved next to the loaded config file.
 
 Config validation warnings are written to the application log at startup.
 DISPatch reports unknown JSON keys, invalid address strings, invalid multicast

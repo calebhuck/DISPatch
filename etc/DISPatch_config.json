@@ -41,6 +41,7 @@
   "log": {
     "logs": true,
     "logFile": "DISPatch.log",
+    "logLevel": "debug",
     "messageLogs": true,
     "messageLogFile": "DISPatch_messages.log"
   },
