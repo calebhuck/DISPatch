@@ -45,7 +45,7 @@
     "messageLogFile": "DISPatch_messages.log"
   },
   "testFederate": {
-    "enabled": true,
+    "enabled": false,
     "entityId": {
       "site": 1,
       "application": 1,

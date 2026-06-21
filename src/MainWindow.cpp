@@ -885,6 +885,7 @@ void MainWindow::readDummyFederateDatagrams()
         QHostAddress sender;
         quint16 senderPort = 0;
         dummyFederateSocket_->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        appendMessageRow(datagram, sender, senderPort, QStringLiteral("Test Rx"));
         respondFromDummyFederate(datagram, sender, senderPort);
     }
 }
@@ -901,8 +902,6 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
     }
 
     const quint32 requestId = requestIdFromResponse(datagram, static_cast<quint8>(pduType));
-    appendMessageRow(datagram, sender, senderPort, QStringLiteral("Test Rx"));
-
     const EntityId receivingEntity = readEntityId(datagram, TargetEntityOffset);
     const EntityId federateId = currentTestFederateId();
     if (!entityIdsMatch(receivingEntity, federateId)) {
