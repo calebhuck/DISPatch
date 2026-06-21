@@ -19,7 +19,7 @@ build.ninja
 *~
 
 # Native binaries and transient runtime files
-DISPatch
+/DISPatch
 *.o
 *.obj
 *.so
