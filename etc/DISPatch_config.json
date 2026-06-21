@@ -39,9 +39,9 @@
     }
   },
   "log": {
-    "logs": false,
+    "logs": true,
     "logFile": "DISPatch.log",
-    "messageLogs": false,
+    "messageLogs": true,
     "messageLogFile": "DISPatch_messages.log"
   },
   "testFederate": {

@@ -947,50 +947,6 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
                   .arg(responseAddress.toString())
                   .arg(responsePort));
     appendMessageRow(response, responseAddress, responsePort, QStringLiteral("Test Tx"));
-    if (responseAddress.isLoopback()) {
-        recordLocalLoopbackResponse(response, responseAddress, responsePort);
-    }
-}
-
-auto MainWindow::isOwnRequestLoopback(const QByteArray &datagram) const -> bool
-{
-    if (datagram.size() < TargetEntityOffset + EntityIdByteLength) {
-        return false;
-    }
-
-    const auto pduType = static_cast<quint8>(datagram[PduTypeOffset]);
-    if (pduType != StartResumePdu && pduType != StopFreezePdu && pduType != ActionRequestPdu) {
-        return false;
-    }
-
-    const quint32 requestId = requestIdFromResponse(datagram, pduType);
-    if (!requestStates_.contains(requestId)) {
-        return false;
-    }
-
-    bool configOk = false;
-    const DisConfig config = currentConfig(&configOk);
-    return configOk && entityIdsMatch(readEntityId(datagram, OriginEntityOffset), config.managerId);
-}
-
-void MainWindow::recordLocalLoopbackResponse(const QByteArray &datagram, const QHostAddress &peer, quint16 peerPort)
-{
-    recordedLocalLoopbackResponses_.insert(datagram);
-    appendMessageRow(datagram, peer, peerPort, QStringLiteral("Rx"));
-
-    const quint8 pduType =
-        datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;
-    const quint32 requestId = requestIdFromResponse(datagram, pduType);
-    QString matchedState;
-    if (requestStates_.contains(requestId)) {
-        matchedState = QStringLiteral(" for %1").arg(requestStates_.value(requestId));
-    }
-
-    appendLog(QStringLiteral("Received %1%2 from %3:%4")
-                  .arg(pduTypeName(pduType))
-                  .arg(matchedState)
-                  .arg(peer.toString())
-                  .arg(peerPort));
 }
 
 void MainWindow::appendMessageRow(const QByteArray &datagram,
@@ -1025,13 +981,6 @@ void MainWindow::appendMessageRow(const QByteArray &datagram,
 
 void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
 {
-    if (recordedLocalLoopbackResponses_.remove(datagram) > 0) {
-        return;
-    }
-    if (isOwnRequestLoopback(datagram)) {
-        return;
-    }
-
     appendMessageRow(datagram, sender, senderPort, QStringLiteral("Rx"));
     const quint8 pduType =
         datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;

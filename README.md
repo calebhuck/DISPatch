@@ -65,10 +65,9 @@ are mutually exclusive shortcuts that set the destination to `255.255.255.255`
 or `127.0.0.1`, select an appropriate interface, and adjust UDP bind flags for
 the selected mode.
 
-The message table is an application-level PDU trace. It shows manager
-transmits, manager receives, and in-process test federate receive/transmit
-events. Self-looped manager multicast requests are suppressed so multicast,
-broadcast, and localhost testing show the same logical command/response flow.
+The message table is a socket-level PDU trace. It shows manager and in-process
+test federate sends, and every datagram each socket actually receives. No
+self-looped multicast or localhost packets are hidden or synthesized.
 
 The optional `log` section can mirror the UI logs to files. Set `logs` to true
 to append the event log to `logFile`, and set `messageLogs` to true to append

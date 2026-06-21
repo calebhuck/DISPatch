@@ -5,7 +5,6 @@
 
 #include <QtCore/QFile>
 #include <QtCore/QMap>
-#include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QtGlobal>
@@ -73,8 +72,6 @@ private:
     void readDatagrams();
     void readDummyFederateDatagrams();
     void respondFromDummyFederate(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort);
-    auto isOwnRequestLoopback(const QByteArray &datagram) const -> bool;
-    void recordLocalLoopbackResponse(const QByteArray &datagram, const QHostAddress &peer, quint16 peerPort);
     void appendMessageRow(const QByteArray &datagram,
                           const QHostAddress &peer,
                           quint16 peerPort,
@@ -113,7 +110,6 @@ private:
     QPlainTextEdit *log_ = nullptr;
     QFile logFile_;
     QFile messageLogFile_;
-    QSet<QByteArray> recordedLocalLoopbackResponses_;
     QUdpSocket *socket_ = nullptr;
     QUdpSocket *dummyFederateSocket_ = nullptr;
     QHostAddress boundAddress_;
