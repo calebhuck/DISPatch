@@ -21,3 +21,5 @@ add_executable(DISPatch
         src/Theme.cpp)
 target_include_directories(DISPatch PRIVATE include)
 target_link_libraries(DISPatch PRIVATE Qt5::Widgets Qt5::Network)
+
+configure_file(etc/DISPatch_config.json DISPatch_config.json COPYONLY)

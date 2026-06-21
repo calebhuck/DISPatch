@@ -3,7 +3,9 @@
 #include <DISPatch/AppConfig.h>
 #include <DISPatch/DisTypes.h>
 
+#include <QtCore/QFile>
 #include <QtCore/QMap>
+#include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QtGlobal>
@@ -14,7 +16,7 @@
 
 class QCheckBox;
 class QComboBox;
-class QHBoxLayout;
+class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -31,9 +33,24 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
 
 private:
+    enum class DestinationMode : quint8 {
+        Normal,
+        Broadcast,
+        Localhost
+    };
+
     static auto makePortSpinBox(QWidget *parent, int value) -> QSpinBox *;
     static auto makeSmallSpinBox(QWidget *parent, int minimum, int maximum, int value) -> QSpinBox *;
     [[nodiscard]] auto udpBindMode() const -> QUdpSocket::BindMode;
+    void populateNetworkInterfaces();
+    auto autoSelectedNetworkInterface() const -> QNetworkInterface;
+    auto selectedNetworkInterface() const -> QNetworkInterface;
+    static auto interfaceLabel(const QNetworkInterface &networkInterface) -> QString;
+    static auto primaryIpv4Address(const QNetworkInterface &networkInterface) -> QHostAddress;
+    static auto interfaceForAddress(const QHostAddress &address) -> QNetworkInterface;
+    auto effectiveListenAddress(const QHostAddress &listenAddress, const QHostAddress &destinationAddress) const -> QHostAddress;
+    auto dummyFederateBindAddress(const QHostAddress &destinationAddress) const -> QHostAddress;
+    void updateSocketOptions(QUdpSocket *socket, const QHostAddress &destinationAddress) const;
     auto configuredMulticastGroup(QString *error = nullptr) const -> QHostAddress;
     auto configuredMulticastInterface(QString *error = nullptr) const -> QNetworkInterface;
     static auto sameNetworkInterface(const QNetworkInterface &left, const QNetworkInterface &right) -> bool;
@@ -41,7 +58,7 @@ private:
     void clearDummyFederateMulticastGroup();
     auto updateListenMulticastGroup() -> bool;
     void updateDummyFederateMulticastGroup(const QHostAddress &group);
-    void addStateButton(QHBoxLayout *layout, const QString &label, SimulationState state);
+    void addStateButton(QGridLayout *layout, const QString &label, SimulationState state, int row, int column);
     auto currentConfig(bool *configOk = nullptr) const -> DisConfig;
     [[nodiscard]] auto currentTestFederateId() const -> EntityId;
     [[nodiscard]] auto currentTargetId() const -> EntityId;
@@ -49,21 +66,36 @@ private:
     void setTargetIdControls(const EntityId &entityId);
     void setTargetIdControlsEnabled(bool enabled);
     void setTargetBroadcast(bool enabled);
+    void setDestinationMode(DestinationMode mode);
     void bindListenSocket();
     void bindDummyFederateSocket();
     void sendStateCommand(SimulationState state);
     void readDatagrams();
     void readDummyFederateDatagrams();
     void respondFromDummyFederate(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort);
+    auto isOwnRequestLoopback(const QByteArray &datagram) const -> bool;
+    void recordLocalLoopbackResponse(const QByteArray &datagram, const QHostAddress &peer, quint16 peerPort);
+    void appendMessageRow(const QByteArray &datagram,
+                          const QHostAddress &peer,
+                          quint16 peerPort,
+                          const QString &direction);
     void recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort);
     void appendLog(const QString &message);
+    void setupLogFiles();
+    auto configuredLogPath(const QString &path) const -> QString;
+    void writeLogFileLine(QFile *file, const QString &line);
+    void clearMessageLog();
+    void clearEventLog();
     void applyTheme(Theme theme);
 
     QComboBox *themeCombo_ = nullptr;
+    QComboBox *networkInterfaceCombo_ = nullptr;
     QLineEdit *destinationAddressEdit_ = nullptr;
     QSpinBox *destinationPortSpin_ = nullptr;
     QLineEdit *listenAddressEdit_ = nullptr;
     QSpinBox *listenPortSpin_ = nullptr;
+    QCheckBox *destinationBroadcastCheck_ = nullptr;
+    QCheckBox *destinationLocalhostCheck_ = nullptr;
     QSpinBox *exerciseSpin_ = nullptr;
     QSpinBox *managerSiteSpin_ = nullptr;
     QSpinBox *managerApplicationSpin_ = nullptr;
@@ -79,6 +111,9 @@ private:
     QSpinBox *dummyFederateEntitySpin_ = nullptr;
     QTableWidget *responseTable_ = nullptr;
     QPlainTextEdit *log_ = nullptr;
+    QFile logFile_;
+    QFile messageLogFile_;
+    QSet<QByteArray> recordedLocalLoopbackResponses_;
     QUdpSocket *socket_ = nullptr;
     QUdpSocket *dummyFederateSocket_ = nullptr;
     QHostAddress boundAddress_;
@@ -91,6 +126,9 @@ private:
     quint16 dummyFederateBoundPort_ = 0;
     quint32 nextRequestId_ = 1;
     bool dummyFederateEnabled_ = false;
+    DestinationMode destinationMode_ = DestinationMode::Normal;
+    QString savedDestinationAddressBeforeMode_;
+    QString savedInterfaceNameBeforeMode_;
     AppConfig appConfig_;
     QStringList configWarnings_;
     QMap<quint32, QString> requestStates_;

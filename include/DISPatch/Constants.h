@@ -53,12 +53,14 @@ constexpr int ThemeComboWidth = 140;
 constexpr int IdentityStretchColumn = 5;
 constexpr int TestFederateMinimumWidth = 260;
 constexpr int TestFederateStretchColumn = 4;
-constexpr int ResponseTableColumnCount = 5;
+constexpr int ResponseTableColumnCount = 6;
 constexpr int MaxLogBlocks = 1000;
 constexpr int DefaultWindowWidth = 980;
 constexpr int DefaultWindowHeight = 720;
 constexpr int RebindIntervalMilliseconds = 1000;
 constexpr int StateButtonMinimumHeight = 36;
+inline constexpr const char *BroadcastDestinationAddress = "255.255.255.255";
+inline constexpr const char *LocalhostDestinationAddress = "127.0.0.1";
 
 enum PduType : quint8 {
     StartResumePdu = 13,

@@ -50,13 +50,30 @@ can also be a numeric DIS value. The theme can be `dark`, `light`, or
 
 The network section also controls UDP socket behavior. `shareAddress` and
 `reuseAddress` allow multiple processes to bind the same UDP port on one
-machine when the platform supports it. `joinMulticast` makes the receive
-socket join the configured `multicastGroupAddress`; when that field is blank,
-DISPatch uses `destinationAddress` if it is multicast. `multicastInterfaceName`
-can pin multicast joins to a specific network interface; leave it blank to let
-the OS choose. `multicastLoopback` keeps local multicast traffic visible on the
-same machine, which is useful when several federates are running locally on one
-DIS port.
+machine when the platform supports it. `interfaceName` can pin socket binding
+and multicast sends/joins to a specific network interface; when it is blank,
+DISPatch selects a usable IPv4 interface and shows that selection in the UI.
+`multicastInterfaceName` is still accepted as a legacy alias for
+`interfaceName`. `joinMulticast` makes the receive socket join the configured
+`multicastGroupAddress`; when that field is blank, DISPatch uses
+`destinationAddress` if it is multicast. `multicastLoopback` keeps local
+multicast traffic visible on the same machine, which is useful when several
+federates are running locally on one DIS port.
+
+The Network section also has Broadcast and Localhost destination modes. They
+are mutually exclusive shortcuts that set the destination to `255.255.255.255`
+or `127.0.0.1`, select an appropriate interface, and adjust UDP bind flags for
+the selected mode.
+
+The message table is an application-level PDU trace. It shows manager
+transmits, manager receives, and in-process test federate receive/transmit
+events. Self-looped manager multicast requests are suppressed so multicast,
+broadcast, and localhost testing show the same logical command/response flow.
+
+The optional `log` section can mirror the UI logs to files. Set `logs` to true
+to append the event log to `logFile`, and set `messageLogs` to true to append
+the PDU trace to `messageLogFile`. Relative file paths are resolved next to the
+loaded config file.
 
 Config validation warnings are written to the application log at startup.
 DISPatch reports unknown JSON keys, invalid address strings, invalid multicast

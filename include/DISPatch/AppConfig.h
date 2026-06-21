@@ -15,6 +15,7 @@ struct AppConfig {
     quint16 destinationPort = 3000;
     QString listenAddress = QStringLiteral("0.0.0.0");
     quint16 listenPort = 3000;
+    QString interfaceName;
     QString multicastGroupAddress;
     QString multicastInterfaceName;
     bool shareAddress = true;
@@ -29,6 +30,10 @@ struct AppConfig {
     quint8 standbyReason = 1;
     quint8 standbyFrozenBehavior = 0;
     Theme theme = Theme::Dark;
+    bool logs = false;
+    QString logFile = QStringLiteral("DISPatch.log");
+    bool messageLogs = false;
+    QString messageLogFile = QStringLiteral("DISPatch_messages.log");
     bool testFederateEnabled = false;
     EntityId testFederateId = EntityId{1, 1, 0};
     QString configPath;
@@ -36,6 +41,7 @@ struct AppConfig {
 
 auto parseConfigAddress(const QString &text, QHostAddress *address) -> bool;
 auto isAnyAddress(const QHostAddress &address) -> bool;
+auto isBroadcastAddress(const QHostAddress &address) -> bool;
 auto loadAppConfig(QStringList *warnings) -> AppConfig;
 
 } // namespace dispatch

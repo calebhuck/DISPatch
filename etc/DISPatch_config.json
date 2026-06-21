@@ -5,6 +5,7 @@
     "destinationPort": 3000,
     "listenAddress": "0.0.0.0",
     "listenPort": 3000,
+    "interfaceName": "",
     "multicastGroupAddress": "",
     "multicastInterfaceName": "",
     "shareAddress": true,
@@ -36,6 +37,12 @@
     "shutdown": {
       "actionId": 2
     }
+  },
+  "log": {
+    "logs": false,
+    "logFile": "DISPatch.log",
+    "messageLogs": false,
+    "messageLogFile": "DISPatch_messages.log"
   },
   "testFederate": {
     "enabled": true,

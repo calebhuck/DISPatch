@@ -21,6 +21,7 @@ auto rootConfigKeys() -> const QStringList &
                                   QStringLiteral("network"),
                                   QStringLiteral("dis"),
                                   QStringLiteral("commands"),
+                                  QStringLiteral("log"),
                                   QStringLiteral("testFederate")};
     return keys;
 }
@@ -31,6 +32,7 @@ auto networkConfigKeys() -> const QStringList &
                                   QStringLiteral("destinationPort"),
                                   QStringLiteral("listenAddress"),
                                   QStringLiteral("listenPort"),
+                                  QStringLiteral("interfaceName"),
                                   QStringLiteral("multicastGroupAddress"),
                                   QStringLiteral("multicastInterfaceName"),
                                   QStringLiteral("shareAddress"),
@@ -81,6 +83,15 @@ auto testFederateConfigKeys() -> const QStringList &
 {
     static const QStringList keys{QStringLiteral("enabled"),
                                   QStringLiteral("entityId")};
+    return keys;
+}
+
+auto logConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("logs"),
+                                  QStringLiteral("logFile"),
+                                  QStringLiteral("messageLogs"),
+                                  QStringLiteral("messageLogFile")};
     return keys;
 }
 
@@ -374,17 +385,32 @@ void validateNetworkConfig(const AppConfig &config, QStringList *warnings) // NO
             "config.network.joinMulticast is true while listenAddress is specific; 0.0.0.0 is usually safer for multicast receives"));
     }
 
-    if (!config.multicastInterfaceName.trimmed().isEmpty()) {
+    if (!config.interfaceName.trimmed().isEmpty()) {
+        const QNetworkInterface interface =
+            QNetworkInterface::interfaceFromName(config.interfaceName.trimmed());
+        if (!interface.isValid()) {
+            warnings->append(QStringLiteral("config.network.interfaceName \"%1\" is not a known interface")
+                                 .arg(config.interfaceName));
+        }
+        if (!config.multicastInterfaceName.trimmed().isEmpty()
+            && config.multicastInterfaceName.trimmed() != config.interfaceName.trimmed()) {
+            warnings->append(QStringLiteral(
+                "config.network.interfaceName overrides legacy multicastInterfaceName"));
+        }
+    } else if (!config.multicastInterfaceName.trimmed().isEmpty()) {
         const QNetworkInterface interface =
             QNetworkInterface::interfaceFromName(config.multicastInterfaceName.trimmed());
         if (!interface.isValid()) {
             warnings->append(QStringLiteral("config.network.multicastInterfaceName \"%1\" is not a known interface")
                                  .arg(config.multicastInterfaceName));
         }
-        if (!config.joinMulticast || !hasEffectiveMulticastGroup) {
-            warnings->append(QStringLiteral(
-                "config.network.multicastInterfaceName is set, but no multicast join will be attempted"));
-        }
+    }
+
+    if (!config.interfaceName.trimmed().isEmpty()
+        && (!config.joinMulticast || !hasEffectiveMulticastGroup)
+        && destinationIsMulticast) {
+        warnings->append(QStringLiteral(
+            "config.network.interfaceName is set, but no multicast join will be attempted"));
     }
 
     if ((!config.shareAddress || !config.reuseAddress)
@@ -429,6 +455,12 @@ auto isAnyAddress(const QHostAddress &address) -> bool
     return address == QHostAddress(QHostAddress::Any)
         || address == QHostAddress(QHostAddress::AnyIPv4)
         || address == QHostAddress(QHostAddress::AnyIPv6);
+}
+
+auto isBroadcastAddress(const QHostAddress &address) -> bool
+{
+    return address == QHostAddress(QHostAddress::Broadcast)
+        || address.toString() == QString::fromLatin1(BroadcastDestinationAddress);
 }
 
 auto loadAppConfig(QStringList *warnings) -> AppConfig
@@ -501,6 +533,11 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
                                                      MaxUdpPort,
                                                      warnings,
                                                      QStringLiteral("config.network")));
+    config.interfaceName = readString(network,
+                                      QStringLiteral("interfaceName"),
+                                      config.interfaceName,
+                                      warnings,
+                                      QStringLiteral("config.network"));
     config.multicastGroupAddress = readString(network,
                                               QStringLiteral("multicastGroupAddress"),
                                               config.multicastGroupAddress,
@@ -511,6 +548,9 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
                                                config.multicastInterfaceName,
                                                warnings,
                                                QStringLiteral("config.network"));
+    if (config.interfaceName.trimmed().isEmpty()) {
+        config.interfaceName = config.multicastInterfaceName;
+    }
     config.shareAddress = readBool(network,
                                    QStringLiteral("shareAddress"),
                                    config.shareAddress,
@@ -584,6 +624,29 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
                                                            MaxActionId,
                                                            warnings,
                                                            QStringLiteral("config.commands.shutdown")));
+
+    const QJsonObject log = readObject(root, QStringLiteral("log"), warnings, QStringLiteral("config"));
+    warnUnknownKeys(log, logConfigKeys(), warnings, QStringLiteral("config.log"));
+    config.logs = readBool(log,
+                           QStringLiteral("logs"),
+                           config.logs,
+                           warnings,
+                           QStringLiteral("config.log"));
+    config.logFile = readString(log,
+                                QStringLiteral("logFile"),
+                                config.logFile,
+                                warnings,
+                                QStringLiteral("config.log"));
+    config.messageLogs = readBool(log,
+                                  QStringLiteral("messageLogs"),
+                                  config.messageLogs,
+                                  warnings,
+                                  QStringLiteral("config.log"));
+    config.messageLogFile = readString(log,
+                                       QStringLiteral("messageLogFile"),
+                                       config.messageLogFile,
+                                       warnings,
+                                       QStringLiteral("config.log"));
 
     const QJsonObject testFederate = readObject(root,
                                                 QStringLiteral("testFederate"),

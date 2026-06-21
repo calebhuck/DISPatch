@@ -5,9 +5,13 @@
 #include <DISPatch/Theme.h>
 
 #include <QtCore/QDateTime>
+#include <QtCore/QDir>
+#include <QtCore/QFileInfo>
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QTextStream>
 #include <QtCore/QTime>
 #include <QtCore/QTimer>
+#include <QtNetwork/QNetworkAddressEntry>
 #include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QCheckBox>
@@ -56,10 +60,53 @@ MainWindow::MainWindow(QWidget *parent)
     destinationPortSpin_ = makePortSpinBox(networkGroup, appConfig_.destinationPort);
     listenAddressEdit_ = new QLineEdit(appConfig_.listenAddress, networkGroup);
     listenPortSpin_ = makePortSpinBox(networkGroup, appConfig_.listenPort);
+    networkInterfaceCombo_ = new QComboBox(networkGroup);
+    populateNetworkInterfaces();
+    auto *destinationModeLayout = new QHBoxLayout();
+    destinationBroadcastCheck_ = new QCheckBox(QStringLiteral("Broadcast"), networkGroup);
+    destinationLocalhostCheck_ = new QCheckBox(QStringLiteral("Localhost"), networkGroup);
+    destinationModeLayout->addWidget(destinationBroadcastCheck_);
+    destinationModeLayout->addWidget(destinationLocalhostCheck_);
+    destinationModeLayout->addStretch(1);
     networkLayout->addRow(QStringLiteral("Destination address"), destinationAddressEdit_);
     networkLayout->addRow(QStringLiteral("Destination port"), destinationPortSpin_);
     networkLayout->addRow(QStringLiteral("Listen address"), listenAddressEdit_);
     networkLayout->addRow(QStringLiteral("Listen port"), listenPortSpin_);
+    networkLayout->addRow(QStringLiteral("Interface"), networkInterfaceCombo_);
+    networkLayout->addRow(QStringLiteral("Destination mode"), destinationModeLayout);
+    connect(destinationBroadcastCheck_, &QCheckBox::toggled, this, [this](bool enabled) -> void {
+        if (enabled) {
+            setDestinationMode(DestinationMode::Broadcast);
+        } else if (destinationMode_ == DestinationMode::Broadcast) {
+            setDestinationMode(DestinationMode::Normal);
+        }
+    });
+    connect(destinationLocalhostCheck_, &QCheckBox::toggled, this, [this](bool enabled) -> void {
+        if (enabled) {
+            setDestinationMode(DestinationMode::Localhost);
+        } else if (destinationMode_ == DestinationMode::Localhost) {
+            setDestinationMode(DestinationMode::Normal);
+        }
+    });
+    connect(networkInterfaceCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() -> void {
+        bindListenSocket();
+        bindDummyFederateSocket();
+    });
+    QHostAddress configuredDestination;
+    if (parseConfigAddress(appConfig_.destinationAddress, &configuredDestination)) {
+        if (isBroadcastAddress(configuredDestination)) {
+            setDestinationMode(DestinationMode::Broadcast);
+        } else if (configuredDestination == QHostAddress(QHostAddress::LocalHost)) {
+            setDestinationMode(DestinationMode::Localhost);
+        }
+    }
+
+    auto *stateGroup = new QGroupBox(QStringLiteral("State Commands"), central);
+    auto *stateLayout = new QGridLayout(stateGroup);
+    addStateButton(stateLayout, QStringLiteral("Startup"), SimulationState::Startup, 0, 0);
+    addStateButton(stateLayout, QStringLiteral("Operate"), SimulationState::Operate, 0, 1);
+    addStateButton(stateLayout, QStringLiteral("Standby"), SimulationState::Standby, 1, 0);
+    addStateButton(stateLayout, QStringLiteral("Shutdown"), SimulationState::Shutdown, 1, 1);
 
     auto *disGroup = new QGroupBox(QStringLiteral("DIS Identity"), central);
     auto *disLayout = new QGridLayout(disGroup);
@@ -85,13 +132,6 @@ MainWindow::MainWindow(QWidget *parent)
     disLayout->addWidget(targetBroadcastCheck_, 2, 4);
     disLayout->setColumnStretch(IdentityStretchColumn, 1);
     connect(targetBroadcastCheck_, &QCheckBox::toggled, this, &MainWindow::setTargetBroadcast);
-
-    auto *stateGroup = new QGroupBox(QStringLiteral("State Commands"), central);
-    auto *stateLayout = new QHBoxLayout(stateGroup);
-    addStateButton(stateLayout, QStringLiteral("Startup"), SimulationState::Startup);
-    addStateButton(stateLayout, QStringLiteral("Standby"), SimulationState::Standby);
-    addStateButton(stateLayout, QStringLiteral("Operate"), SimulationState::Operate);
-    addStateButton(stateLayout, QStringLiteral("Shutdown"), SimulationState::Shutdown);
 
     auto *testGroup = new QGroupBox(QStringLiteral("Test Federate"), central);
     auto *testLayout = new QGridLayout(testGroup);
@@ -119,13 +159,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     responseTable_ = new QTableWidget(0, ResponseTableColumnCount, central);
     responseTable_->setHorizontalHeaderLabels(
-        {QStringLiteral("Time"), QStringLiteral("Peer"), QStringLiteral("PDU"),
+        {QStringLiteral("Time"), QStringLiteral("Dir"), QStringLiteral("Peer"), QStringLiteral("PDU"),
          QStringLiteral("Request"), QStringLiteral("Summary")});
     responseTable_->horizontalHeader()->setStretchLastSection(true);
     responseTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     responseTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     responseTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     responseTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    responseTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     responseTable_->verticalHeader()->setVisible(false);
     responseTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     responseTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -134,18 +175,33 @@ MainWindow::MainWindow(QWidget *parent)
     log_ = new QPlainTextEdit(central);
     log_->setReadOnly(true);
     log_->setMaximumBlockCount(MaxLogBlocks);
+    setupLogFiles();
+
+    auto *logControlsLayout = new QHBoxLayout();
+    auto *clearMessagesButton = new QPushButton(QStringLiteral("Clear Messages"), central);
+    auto *clearLogButton = new QPushButton(QStringLiteral("Clear Log"), central);
+    connect(clearMessagesButton, &QPushButton::clicked, this, &MainWindow::clearMessageLog);
+    connect(clearLogButton, &QPushButton::clicked, this, &MainWindow::clearEventLog);
+    logControlsLayout->addStretch(1);
+    logControlsLayout->addWidget(clearMessagesButton);
+    logControlsLayout->addWidget(clearLogButton);
+
+    auto *networkCommandLayout = new QHBoxLayout();
+    networkCommandLayout->setSpacing(StandardSpacing);
+    networkCommandLayout->addWidget(networkGroup, 3);
+    networkCommandLayout->addWidget(stateGroup, 1);
 
     rootLayout->addLayout(settingsLayout);
-    rootLayout->addWidget(networkGroup);
+    rootLayout->addLayout(networkCommandLayout);
     rootLayout->addLayout(identityLayout);
-    rootLayout->addWidget(stateGroup);
+    rootLayout->addLayout(logControlsLayout);
     rootLayout->addWidget(responseTable_, 1);
     rootLayout->addWidget(log_, 1);
     setCentralWidget(central);
     resize(DefaultWindowWidth, DefaultWindowHeight);
 
     socket_ = new QUdpSocket(this);
-    socket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, appConfig_.multicastLoopback ? 1 : 0);
+    updateSocketOptions(socket_, QHostAddress(destinationAddressEdit_->text()));
     connect(socket_, &QUdpSocket::readyRead, this, &MainWindow::readDatagrams);
     dummyFederateSocket_ = new QUdpSocket(this);
     connect(dummyFederateSocket_, &QUdpSocket::readyRead, this, &MainWindow::readDummyFederateDatagrams);
@@ -195,13 +251,165 @@ auto MainWindow::makeSmallSpinBox(QWidget *parent, int minimum, int maximum, int
 auto MainWindow::udpBindMode() const -> QUdpSocket::BindMode
 {
     QUdpSocket::BindMode mode = QUdpSocket::DefaultForPlatform;
-    if (appConfig_.shareAddress) {
+    if (appConfig_.shareAddress || destinationMode_ == DestinationMode::Broadcast) {
         mode |= QUdpSocket::ShareAddress;
     }
-    if (appConfig_.reuseAddress) {
+    if (appConfig_.reuseAddress || destinationMode_ == DestinationMode::Broadcast) {
         mode |= QUdpSocket::ReuseAddressHint;
     }
     return mode;
+}
+
+void MainWindow::populateNetworkInterfaces()
+{
+    const QNetworkInterface selectedInterface =
+        appConfig_.interfaceName.trimmed().isEmpty()
+            ? autoSelectedNetworkInterface()
+            : QNetworkInterface::interfaceFromName(appConfig_.interfaceName.trimmed());
+
+    networkInterfaceCombo_->clear();
+    for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+        if (!networkInterface.isValid() || primaryIpv4Address(networkInterface).isNull()) {
+            continue;
+        }
+
+        networkInterfaceCombo_->addItem(interfaceLabel(networkInterface), networkInterface.name());
+    }
+
+    const int selectedIndex = networkInterfaceCombo_->findData(selectedInterface.name());
+    if (selectedIndex >= 0) {
+        networkInterfaceCombo_->setCurrentIndex(selectedIndex);
+    }
+}
+
+auto MainWindow::autoSelectedNetworkInterface() const -> QNetworkInterface
+{
+    QHostAddress destinationAddress;
+    if (parseConfigAddress(destinationAddressEdit_->text(), &destinationAddress)
+        && destinationAddress == QHostAddress(QHostAddress::LocalHost)) {
+        for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+            if (networkInterface.flags().testFlag(QNetworkInterface::IsLoopBack)
+                && !primaryIpv4Address(networkInterface).isNull()) {
+                return networkInterface;
+            }
+        }
+    }
+
+    QHostAddress listenAddress;
+    if (parseConfigAddress(listenAddressEdit_->text(), &listenAddress) && !isAnyAddress(listenAddress)) {
+        const QNetworkInterface networkInterface = interfaceForAddress(listenAddress);
+        if (networkInterface.isValid()) {
+            return networkInterface;
+        }
+    }
+
+    for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+        const QNetworkInterface::InterfaceFlags flags = networkInterface.flags();
+        if (flags.testFlag(QNetworkInterface::IsUp)
+            && flags.testFlag(QNetworkInterface::IsRunning)
+            && !flags.testFlag(QNetworkInterface::IsLoopBack)
+            && !primaryIpv4Address(networkInterface).isNull()) {
+            return networkInterface;
+        }
+    }
+
+    for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+        if (networkInterface.flags().testFlag(QNetworkInterface::IsLoopBack)
+            && !primaryIpv4Address(networkInterface).isNull()) {
+            return networkInterface;
+        }
+    }
+
+    return {};
+}
+
+auto MainWindow::selectedNetworkInterface() const -> QNetworkInterface
+{
+    if (networkInterfaceCombo_ == nullptr) {
+        return QNetworkInterface::interfaceFromName(appConfig_.interfaceName.trimmed());
+    }
+
+    return QNetworkInterface::interfaceFromName(networkInterfaceCombo_->currentData().toString());
+}
+
+auto MainWindow::interfaceLabel(const QNetworkInterface &networkInterface) -> QString
+{
+    QString label = networkInterface.name();
+    if (!networkInterface.humanReadableName().isEmpty()
+        && networkInterface.humanReadableName() != networkInterface.name()) {
+        label += QStringLiteral(" - %1").arg(networkInterface.humanReadableName());
+    }
+
+    const QHostAddress address = primaryIpv4Address(networkInterface);
+    if (!address.isNull()) {
+        label += QStringLiteral(" (%1)").arg(address.toString());
+    }
+    return label;
+}
+
+auto MainWindow::primaryIpv4Address(const QNetworkInterface &networkInterface) -> QHostAddress
+{
+    for (const QNetworkAddressEntry &entry : networkInterface.addressEntries()) {
+        const QHostAddress address = entry.ip();
+        if (address.protocol() == QAbstractSocket::IPv4Protocol && !address.isNull()) {
+            return address;
+        }
+    }
+
+    return {};
+}
+
+auto MainWindow::interfaceForAddress(const QHostAddress &address) -> QNetworkInterface
+{
+    for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+        for (const QNetworkAddressEntry &entry : networkInterface.addressEntries()) {
+            if (entry.ip() == address) {
+                return networkInterface;
+            }
+        }
+    }
+
+    return {};
+}
+
+auto MainWindow::effectiveListenAddress(const QHostAddress &listenAddress, const QHostAddress &destinationAddress) const -> QHostAddress
+{
+    if (!isAnyAddress(listenAddress) || destinationAddress.isMulticast()) {
+        return listenAddress;
+    }
+
+    const QHostAddress interfaceAddress = primaryIpv4Address(selectedNetworkInterface());
+    if (!interfaceAddress.isNull()) {
+        return interfaceAddress;
+    }
+
+    return listenAddress;
+}
+
+auto MainWindow::dummyFederateBindAddress(const QHostAddress &destinationAddress) const -> QHostAddress
+{
+    if (destinationAddress.isMulticast() || isBroadcastAddress(destinationAddress)) {
+        return QHostAddress::AnyIPv4;
+    }
+
+    const QHostAddress interfaceAddress = primaryIpv4Address(selectedNetworkInterface());
+    if (!interfaceAddress.isNull() && !destinationAddress.isLoopback()) {
+        return interfaceAddress;
+    }
+
+    return destinationAddress;
+}
+
+void MainWindow::updateSocketOptions(QUdpSocket *socket, const QHostAddress &destinationAddress) const
+{
+    socket->setSocketOption(QAbstractSocket::MulticastLoopbackOption, appConfig_.multicastLoopback ? 1 : 0);
+
+    const QNetworkInterface networkInterface = selectedNetworkInterface();
+    if (socket->state() == QAbstractSocket::BoundState
+        && networkInterface.isValid()
+        && destinationAddress.isMulticast()) {
+        socket->setMulticastInterface(networkInterface);
+    }
 }
 
 auto MainWindow::configuredMulticastGroup(QString *error) const -> QHostAddress
@@ -234,18 +442,13 @@ auto MainWindow::configuredMulticastGroup(QString *error) const -> QHostAddress
 
 auto MainWindow::configuredMulticastInterface(QString *error) const -> QNetworkInterface
 {
-    const QString interfaceName = appConfig_.multicastInterfaceName.trimmed();
-    if (interfaceName.isEmpty()) {
-        return {};
-    }
-
-    const QNetworkInterface interface = QNetworkInterface::interfaceFromName(interfaceName);
+    const QNetworkInterface interface = selectedNetworkInterface();
     if (interface.isValid()) {
         return interface;
     }
 
     if (error != nullptr) {
-        *error = QStringLiteral("Unknown multicast interface %1").arg(interfaceName);
+        *error = QStringLiteral("Unknown network interface");
     }
     return {};
 }
@@ -368,12 +571,12 @@ void MainWindow::updateDummyFederateMulticastGroup(const QHostAddress &group)
     joinedDummyFederateMulticastInterface_ = interface;
 }
 
-void MainWindow::addStateButton(QHBoxLayout *layout, const QString &label, SimulationState state)
+void MainWindow::addStateButton(QGridLayout *layout, const QString &label, SimulationState state, int row, int column)
 {
     auto *button = new QPushButton(label, this);
     button->setMinimumHeight(StateButtonMinimumHeight);
     connect(button, &QPushButton::clicked, this, [this, state]() -> void { sendStateCommand(state); });
-    layout->addWidget(button);
+    layout->addWidget(button, row, column);
 }
 
 auto MainWindow::currentConfig(bool *configOk) const -> DisConfig
@@ -445,6 +648,65 @@ void MainWindow::setTargetBroadcast(bool enabled)
     setTargetIdControls(savedTargetIdBeforeBroadcast_);
 }
 
+void MainWindow::setDestinationMode(DestinationMode mode)
+{
+    if (mode == destinationMode_) {
+        return;
+    }
+
+    if (destinationMode_ == DestinationMode::Normal) {
+        savedDestinationAddressBeforeMode_ = destinationAddressEdit_->text();
+        savedInterfaceNameBeforeMode_ = networkInterfaceCombo_->currentData().toString();
+    }
+
+    destinationMode_ = mode;
+
+    const QSignalBlocker broadcastBlocker(destinationBroadcastCheck_);
+    const QSignalBlocker localhostBlocker(destinationLocalhostCheck_);
+    const QSignalBlocker interfaceBlocker(networkInterfaceCombo_);
+    destinationBroadcastCheck_->setChecked(mode == DestinationMode::Broadcast);
+    destinationLocalhostCheck_->setChecked(mode == DestinationMode::Localhost);
+
+    if (mode == DestinationMode::Normal) {
+        destinationAddressEdit_->setEnabled(true);
+        if (!savedDestinationAddressBeforeMode_.isEmpty()) {
+            destinationAddressEdit_->setText(savedDestinationAddressBeforeMode_);
+        }
+        const int interfaceIndex = networkInterfaceCombo_->findData(savedInterfaceNameBeforeMode_);
+        if (interfaceIndex >= 0) {
+            networkInterfaceCombo_->setCurrentIndex(interfaceIndex);
+        }
+    } else if (mode == DestinationMode::Broadcast) {
+        destinationAddressEdit_->setText(QString::fromLatin1(BroadcastDestinationAddress));
+        destinationAddressEdit_->setEnabled(false);
+        const QNetworkInterface networkInterface = autoSelectedNetworkInterface();
+        const int interfaceIndex = networkInterfaceCombo_->findData(networkInterface.name());
+        if (interfaceIndex >= 0) {
+            networkInterfaceCombo_->setCurrentIndex(interfaceIndex);
+        }
+    } else {
+        destinationAddressEdit_->setText(QString::fromLatin1(LocalhostDestinationAddress));
+        destinationAddressEdit_->setEnabled(false);
+        for (const QNetworkInterface &networkInterface : QNetworkInterface::allInterfaces()) {
+            if (networkInterface.flags().testFlag(QNetworkInterface::IsLoopBack)
+                && !primaryIpv4Address(networkInterface).isNull()) {
+                const int interfaceIndex = networkInterfaceCombo_->findData(networkInterface.name());
+                if (interfaceIndex >= 0) {
+                    networkInterfaceCombo_->setCurrentIndex(interfaceIndex);
+                }
+                break;
+            }
+        }
+    }
+
+    if (socket_ != nullptr) {
+        bindListenSocket();
+    }
+    if (dummyFederateSocket_ != nullptr) {
+        bindDummyFederateSocket();
+    }
+}
+
 void MainWindow::bindListenSocket()
 {
     QHostAddress listenAddress;
@@ -452,13 +714,20 @@ void MainWindow::bindListenSocket()
         statusBar()->showMessage(QStringLiteral("Invalid listen address"));
         return;
     }
+    QHostAddress destinationAddress;
+    if (!parseConfigAddress(destinationAddressEdit_->text(), &destinationAddress)) {
+        statusBar()->showMessage(QStringLiteral("Invalid destination address"));
+        return;
+    }
 
+    const QHostAddress bindAddress = effectiveListenAddress(listenAddress, destinationAddress);
     const auto listenPort = static_cast<quint16>(listenPortSpin_->value());
     const QString listeningMessage =
-        QStringLiteral("Listening on %1:%2").arg(listenAddress.toString()).arg(listenPort);
+        QStringLiteral("Listening on %1:%2").arg(bindAddress.toString()).arg(listenPort);
     if (socket_->state() == QAbstractSocket::BoundState
-        && boundAddress_ == listenAddress
+        && boundAddress_ == bindAddress
         && boundPort_ == listenPort) {
+        updateSocketOptions(socket_, destinationAddress);
         if (!updateListenMulticastGroup()) {
             return;
         }
@@ -470,14 +739,14 @@ void MainWindow::bindListenSocket()
 
     socket_->close();
     joinedListenMulticastGroup_ = QHostAddress();
-    const bool bound = socket_->bind(listenAddress, listenPort, udpBindMode());
+    const bool bound = socket_->bind(bindAddress, listenPort, udpBindMode());
     if (!bound) {
         statusBar()->showMessage(QStringLiteral("Listen bind failed: %1").arg(socket_->errorString()));
         return;
     }
 
-    socket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption, appConfig_.multicastLoopback ? 1 : 0);
-    boundAddress_ = listenAddress;
+    updateSocketOptions(socket_, destinationAddress);
+    boundAddress_ = bindAddress;
     boundPort_ = listenPort;
     if (updateListenMulticastGroup()) {
         statusBar()->showMessage(listeningMessage);
@@ -501,11 +770,10 @@ void MainWindow::bindDummyFederateSocket()
     }
 
     if (dummyFederateSocket_->state() == QAbstractSocket::BoundState
-        && dummyFederateBoundAddress_ == config.destinationAddress
+        && dummyFederateBoundAddress_ == dummyFederateBindAddress(config.destinationAddress)
         && dummyFederateBoundPort_ == config.destinationPort) {
         updateDummyFederateMulticastGroup(config.destinationAddress);
-        dummyFederateSocket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption,
-                                              appConfig_.multicastLoopback ? 1 : 0);
+        updateSocketOptions(dummyFederateSocket_, config.destinationAddress);
         if (dummyFederateStatusLabel_ != nullptr) {
             dummyFederateStatusLabel_->setText(QStringLiteral("Running on %1:%2 as %3")
                                                    .arg(config.destinationAddress.toString())
@@ -517,8 +785,7 @@ void MainWindow::bindDummyFederateSocket()
 
     dummyFederateSocket_->close();
     joinedDummyFederateMulticastGroup_ = QHostAddress();
-    const QHostAddress bindAddress =
-        config.destinationAddress.isMulticast() ? QHostAddress::AnyIPv4 : config.destinationAddress;
+    const QHostAddress bindAddress = dummyFederateBindAddress(config.destinationAddress);
     const bool bound = dummyFederateSocket_->bind(bindAddress, config.destinationPort, udpBindMode());
     if (!bound) {
         appendLog(QStringLiteral("Dummy federate bind failed on %1:%2: %3")
@@ -534,9 +801,8 @@ void MainWindow::bindDummyFederateSocket()
     }
 
     updateDummyFederateMulticastGroup(config.destinationAddress);
-    dummyFederateSocket_->setSocketOption(QAbstractSocket::MulticastLoopbackOption,
-                                          appConfig_.multicastLoopback ? 1 : 0);
-    dummyFederateBoundAddress_ = config.destinationAddress;
+    updateSocketOptions(dummyFederateSocket_, config.destinationAddress);
+    dummyFederateBoundAddress_ = bindAddress;
     dummyFederateBoundPort_ = config.destinationPort;
     if (dummyFederateStatusLabel_ != nullptr) {
         dummyFederateStatusLabel_->setText(QStringLiteral("Running on %1:%2 as %3")
@@ -596,6 +862,7 @@ void MainWindow::sendStateCommand(SimulationState state)
                   .arg(config.destinationPort)
                   .arg(pdu.size())
                   .arg(detail));
+    appendMessageRow(pdu, config.destinationAddress, config.destinationPort, QStringLiteral("Tx"));
 }
 
 void MainWindow::readDatagrams()
@@ -634,6 +901,8 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
     }
 
     const quint32 requestId = requestIdFromResponse(datagram, static_cast<quint8>(pduType));
+    appendMessageRow(datagram, sender, senderPort, QStringLiteral("Test Rx"));
+
     const EntityId receivingEntity = readEntityId(datagram, TargetEntityOffset);
     const EntityId federateId = currentTestFederateId();
     if (!entityIdsMatch(receivingEntity, federateId)) {
@@ -677,9 +946,57 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
                   .arg(requestId)
                   .arg(responseAddress.toString())
                   .arg(responsePort));
+    appendMessageRow(response, responseAddress, responsePort, QStringLiteral("Test Tx"));
+    if (responseAddress.isLoopback()) {
+        recordLocalLoopbackResponse(response, responseAddress, responsePort);
+    }
 }
 
-void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
+auto MainWindow::isOwnRequestLoopback(const QByteArray &datagram) const -> bool
+{
+    if (datagram.size() < TargetEntityOffset + EntityIdByteLength) {
+        return false;
+    }
+
+    const auto pduType = static_cast<quint8>(datagram[PduTypeOffset]);
+    if (pduType != StartResumePdu && pduType != StopFreezePdu && pduType != ActionRequestPdu) {
+        return false;
+    }
+
+    const quint32 requestId = requestIdFromResponse(datagram, pduType);
+    if (!requestStates_.contains(requestId)) {
+        return false;
+    }
+
+    bool configOk = false;
+    const DisConfig config = currentConfig(&configOk);
+    return configOk && entityIdsMatch(readEntityId(datagram, OriginEntityOffset), config.managerId);
+}
+
+void MainWindow::recordLocalLoopbackResponse(const QByteArray &datagram, const QHostAddress &peer, quint16 peerPort)
+{
+    recordedLocalLoopbackResponses_.insert(datagram);
+    appendMessageRow(datagram, peer, peerPort, QStringLiteral("Rx"));
+
+    const quint8 pduType =
+        datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;
+    const quint32 requestId = requestIdFromResponse(datagram, pduType);
+    QString matchedState;
+    if (requestStates_.contains(requestId)) {
+        matchedState = QStringLiteral(" for %1").arg(requestStates_.value(requestId));
+    }
+
+    appendLog(QStringLiteral("Received %1%2 from %3:%4")
+                  .arg(pduTypeName(pduType))
+                  .arg(matchedState)
+                  .arg(peer.toString())
+                  .arg(peerPort));
+}
+
+void MainWindow::appendMessageRow(const QByteArray &datagram,
+                                  const QHostAddress &peer,
+                                  quint16 peerPort,
+                                  const QString &direction)
 {
     const quint8 pduType =
         datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;
@@ -687,12 +1004,38 @@ void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &
     const int row = responseTable_->rowCount();
     responseTable_->insertRow(row);
     responseTable_->setItem(row, 0, new QTableWidgetItem(QTime::currentTime().toString("HH:mm:ss.zzz")));
-    responseTable_->setItem(row, 1, new QTableWidgetItem(QStringLiteral("%1:%2").arg(sender.toString()).arg(senderPort)));
-    responseTable_->setItem(row, 2, new QTableWidgetItem(pduTypeName(pduType)));
-    responseTable_->setItem(row, 3, new QTableWidgetItem(requestId == 0 ? QString() : QString::number(requestId)));
-    responseTable_->setItem(row, 4, new QTableWidgetItem(responseSummary(datagram)));
+    responseTable_->setItem(row, 1, new QTableWidgetItem(direction));
+    responseTable_->setItem(row, 2, new QTableWidgetItem(QStringLiteral("%1:%2").arg(peer.toString()).arg(peerPort)));
+    responseTable_->setItem(row, 3, new QTableWidgetItem(pduTypeName(pduType)));
+    responseTable_->setItem(row, 4, new QTableWidgetItem(requestId == 0 ? QString() : QString::number(requestId)));
+    const QString summary = responseSummary(datagram);
+    responseTable_->setItem(row, 5, new QTableWidgetItem(summary));
     responseTable_->scrollToBottom();
 
+    writeLogFileLine(&messageLogFile_,
+                     QStringLiteral("%1\t%2\t%3:%4\t%5\t%6\t%7")
+                         .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz"),
+                              direction,
+                              peer.toString())
+                         .arg(peerPort)
+                         .arg(pduTypeName(pduType),
+                              requestId == 0 ? QString() : QString::number(requestId),
+                              summary));
+}
+
+void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
+{
+    if (recordedLocalLoopbackResponses_.remove(datagram) > 0) {
+        return;
+    }
+    if (isOwnRequestLoopback(datagram)) {
+        return;
+    }
+
+    appendMessageRow(datagram, sender, senderPort, QStringLiteral("Rx"));
+    const quint8 pduType =
+        datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;
+    const quint32 requestId = requestIdFromResponse(datagram, pduType);
     QString matchedState;
     if (requestStates_.contains(requestId)) {
         matchedState = QStringLiteral(" for %1").arg(requestStates_.value(requestId));
@@ -707,9 +1050,67 @@ void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &
 
 void MainWindow::appendLog(const QString &message)
 {
-    log_->appendPlainText(QStringLiteral("[%1] %2")
-                              .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss"))
-                              .arg(message));
+    const QString line = QStringLiteral("[%1] %2")
+                             .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss"),
+                                  message);
+    log_->appendPlainText(line);
+    writeLogFileLine(&logFile_, line);
+}
+
+void MainWindow::setupLogFiles()
+{
+    if (appConfig_.logs) {
+        const QString path = configuredLogPath(appConfig_.logFile);
+        logFile_.setFileName(path);
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        if (!logFile_.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            appendLog(QStringLiteral("Could not open log file %1: %2").arg(path, logFile_.errorString()));
+        }
+    }
+
+    if (appConfig_.messageLogs) {
+        const QString path = configuredLogPath(appConfig_.messageLogFile);
+        messageLogFile_.setFileName(path);
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        if (!messageLogFile_.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            appendLog(QStringLiteral("Could not open message log file %1: %2").arg(path, messageLogFile_.errorString()));
+        }
+    }
+}
+
+auto MainWindow::configuredLogPath(const QString &path) const -> QString
+{
+    const QFileInfo fileInfo(path);
+    if (fileInfo.isAbsolute()) {
+        return path;
+    }
+
+    if (!appConfig_.configPath.isEmpty()) {
+        return QDir(QFileInfo(appConfig_.configPath).absolutePath()).filePath(path);
+    }
+
+    return QDir::current().filePath(path);
+}
+
+void MainWindow::writeLogFileLine(QFile *file, const QString &line)
+{
+    if (file == nullptr || !file->isOpen()) {
+        return;
+    }
+
+    QTextStream out(file);
+    out << line << '\n';
+    file->flush();
+}
+
+void MainWindow::clearMessageLog()
+{
+    responseTable_->setRowCount(0);
+}
+
+void MainWindow::clearEventLog()
+{
+    log_->clear();
 }
 
 void MainWindow::applyTheme(Theme theme)
