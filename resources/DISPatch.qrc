@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/dispatch">
+        <file>check-dark.xpm</file>
+        <file>check-white.xpm</file>
+    </qresource>
+</RCC>

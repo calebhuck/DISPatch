@@ -4,6 +4,7 @@ project(DISPatch)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 option(DISPATCH_WITH_TESTS "Build DISPatch tests" OFF)
 
@@ -24,7 +25,8 @@ target_link_libraries(DISPatch_core PUBLIC Qt5::Core Qt5::Network)
 add_executable(DISPatch
         main.cpp
         include/DISPatch/MainWindow.h
-        src/MainWindow.cpp)
+        src/MainWindow.cpp
+        resources/DISPatch.qrc)
 target_include_directories(DISPatch PRIVATE include)
 target_link_libraries(DISPatch PRIVATE DISPatch_core Qt5::Widgets)
 

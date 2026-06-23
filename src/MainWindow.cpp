@@ -210,6 +210,10 @@ MainWindow::MainWindow(QWidget *parent)
     themeCombo_->addItem(QStringLiteral("Dark"), static_cast<int>(Theme::Dark));
     themeCombo_->addItem(QStringLiteral("Light"), static_cast<int>(Theme::Light));
     themeCombo_->addItem(QStringLiteral("Gruvbox"), static_cast<int>(Theme::Gruvbox));
+    themeCombo_->addItem(QStringLiteral("One Dark"), static_cast<int>(Theme::OneDark));
+    themeCombo_->addItem(QStringLiteral("VS Code Default"), static_cast<int>(Theme::VsCodeDefault));
+    themeCombo_->addItem(QStringLiteral("Tokyo Night"), static_cast<int>(Theme::TokyoNight));
+    themeCombo_->addItem(QStringLiteral("Dracula"), static_cast<int>(Theme::Dracula));
     themeCombo_->setFixedWidth(ThemeComboWidth);
     settingsLayout->addWidget(themeCombo_);
     settingsLayout->addStretch(1);
@@ -263,11 +267,24 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *stateGroup = new QGroupBox(QStringLiteral("Simulation Commands"), central);
     auto *stateLayout = new QGridLayout(stateGroup);
-    addStateButton(stateLayout, QStringLiteral("Initialize"), SimulationCommand::Initialize, 0, 0, 3);
-    addStateButton(stateLayout, QStringLiteral("Start"), SimulationCommand::Start, 0, 3, 3);
-    addStateButton(stateLayout, QStringLiteral("Pause"), SimulationCommand::Pause, 1, 0, 2);
-    addStateButton(stateLayout, QStringLiteral("Stop"), SimulationCommand::Stop, 1, 2, 2);
-    addStateButton(stateLayout, QStringLiteral("Reset"), SimulationCommand::Reset, 1, 4, 2);
+    startRealWorldTimeOffsetSpin_ =
+        makeSmallSpinBox(stateGroup, 0, MaxTimeOffsetSeconds, appConfig_.startRealWorldTimeOffsetSeconds);
+    startRealWorldTimeOffsetSpin_->setSuffix(QStringLiteral(" s"));
+    startSimulationTimeOffsetSpin_ =
+        makeSmallSpinBox(stateGroup, 0, MaxTimeOffsetSeconds, appConfig_.startSimulationTimeOffsetSeconds);
+    startSimulationTimeOffsetSpin_->setSuffix(QStringLiteral(" s"));
+    startUseLiteralZeroCheck_ = new QCheckBox(QStringLiteral("Use literal zero"), stateGroup);
+    startUseLiteralZeroCheck_->setChecked(appConfig_.startUseLiteralZero);
+    stateLayout->addWidget(new QLabel(QStringLiteral("Start real-world offset"), stateGroup), 0, 0, 1, 3);
+    stateLayout->addWidget(startRealWorldTimeOffsetSpin_, 0, 3, 1, 3);
+    stateLayout->addWidget(new QLabel(QStringLiteral("Start simulation offset"), stateGroup), 1, 0, 1, 3);
+    stateLayout->addWidget(startSimulationTimeOffsetSpin_, 1, 3, 1, 3);
+    stateLayout->addWidget(startUseLiteralZeroCheck_, 2, 0, 1, 6);
+    addStateButton(stateLayout, QStringLiteral("Initialize"), SimulationCommand::Initialize, 3, 0, 3);
+    addStateButton(stateLayout, QStringLiteral("Start"), SimulationCommand::Start, 3, 3, 3);
+    addStateButton(stateLayout, QStringLiteral("Pause"), SimulationCommand::Pause, 4, 0, 2);
+    addStateButton(stateLayout, QStringLiteral("Stop"), SimulationCommand::Stop, 4, 2, 2);
+    addStateButton(stateLayout, QStringLiteral("Reset"), SimulationCommand::Reset, 4, 4, 2);
     for (int column = 0; column < 6; ++column) {
         stateLayout->setColumnStretch(column, 1);
     }
@@ -764,9 +781,9 @@ auto MainWindow::currentConfig(bool *configOk) const -> DisConfig
     config.managerId = makeEntityId(managerSiteSpin_, managerApplicationSpin_, managerEntitySpin_);
     config.targetId = makeEntityId(targetSiteSpin_, targetApplicationSpin_, targetEntitySpin_);
     config.initializeActionId = appConfig_.initializeActionId;
-    config.startRealWorldTimeOffsetSeconds = appConfig_.startRealWorldTimeOffsetSeconds;
-    config.startSimulationTimeOffsetSeconds = appConfig_.startSimulationTimeOffsetSeconds;
-    config.startUseLiteralZero = appConfig_.startUseLiteralZero;
+    config.startRealWorldTimeOffsetSeconds = startRealWorldTimeOffsetSpin_->value();
+    config.startSimulationTimeOffsetSeconds = startSimulationTimeOffsetSpin_->value();
+    config.startUseLiteralZero = startUseLiteralZeroCheck_->isChecked();
     config.pauseFrozenBehavior = appConfig_.pauseFrozenBehavior;
     config.stopFrozenBehavior = appConfig_.stopFrozenBehavior;
     config.resetFrozenBehavior = appConfig_.resetFrozenBehavior;

@@ -137,6 +137,23 @@ auto parseTheme(const QJsonValue &value, Theme *theme) -> bool
         *theme = Theme::Gruvbox;
         return true;
     }
+    if (key == QStringLiteral("onedark")) {
+        *theme = Theme::OneDark;
+        return true;
+    }
+    if (key == QStringLiteral("vscode") || key == QStringLiteral("vscodedefault")
+        || key == QStringLiteral("dark2026")) {
+        *theme = Theme::VsCodeDefault;
+        return true;
+    }
+    if (key == QStringLiteral("tokyonight") || key == QStringLiteral("tokyo")) {
+        *theme = Theme::TokyoNight;
+        return true;
+    }
+    if (key == QStringLiteral("dracula")) {
+        *theme = Theme::Dracula;
+        return true;
+    }
     return false;
 }
 
@@ -522,7 +539,9 @@ auto loadAppConfig(const QString &path, QStringList *warnings) -> AppConfig
         if (parseTheme(root.value(QStringLiteral("theme")), &theme)) {
             config.theme = theme;
         } else {
-            warnings->append(QStringLiteral("theme must be \"dark\", \"light\", or \"gruvbox\"; using dark"));
+            warnings->append(
+                QStringLiteral("theme must be \"dark\", \"light\", \"gruvbox\", \"onedark\", \"vscode\", "
+                               "\"tokyonight\", or \"dracula\"; using dark"));
         }
     }
 

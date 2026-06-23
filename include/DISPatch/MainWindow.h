@@ -108,6 +108,9 @@ private:
     QSpinBox *targetApplicationSpin_ = nullptr;
     QSpinBox *targetEntitySpin_ = nullptr;
     QCheckBox *targetBroadcastCheck_ = nullptr;
+    QSpinBox *startRealWorldTimeOffsetSpin_ = nullptr;
+    QSpinBox *startSimulationTimeOffsetSpin_ = nullptr;
+    QCheckBox *startUseLiteralZeroCheck_ = nullptr;
     EntityId savedTargetIdBeforeBroadcast_;
     QLabel *dummyFederateStatusLabel_ = nullptr;
     QSpinBox *dummyFederateSiteSpin_ = nullptr;

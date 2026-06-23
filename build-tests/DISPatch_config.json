@@ -1,0 +1,63 @@
+{
+  "theme": "dark",
+  "network": {
+    "destinationAddress": "239.1.2.3",
+    "destinationPort": 3000,
+    "listenAddress": "0.0.0.0",
+    "listenPort": 3000,
+    "interfaceName": "",
+    "multicastGroupAddress": "",
+    "multicastInterfaceName": "",
+    "shareAddress": true,
+    "reuseAddress": true,
+    "joinMulticast": true,
+    "multicastLoopback": true
+  },
+  "dis": {
+    "exerciseId": 1,
+    "managerId": {
+      "site": 1,
+      "application": 1,
+      "entity": 1
+    },
+    "targetId": {
+      "site": 1,
+      "application": 1,
+      "entity": 0
+    }
+  },
+  "commands": {
+    "initialize": {
+      "actionId": 39
+    },
+    "start": {
+      "realWorldTimeOffsetSeconds": 2,
+      "simulationTimeOffsetSeconds": 0,
+      "useLiteralZero": true
+    },
+    "pause": {
+      "frozenBehavior": 0
+    },
+    "stop": {
+      "frozenBehavior": 0
+    },
+    "reset": {
+      "frozenBehavior": 0
+    }
+  },
+  "log": {
+    "logs": true,
+    "logFile": "DISPatch.log",
+    "logLevel": "debug",
+    "messageLogs": true,
+    "messageLogFile": "DISPatch_messages.log"
+  },
+  "testFederate": {
+    "enabled": false,
+    "entityId": {
+      "site": 1,
+      "application": 1,
+      "entity": 0
+    }
+  }
+}

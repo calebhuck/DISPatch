@@ -65,6 +65,33 @@ TEST_CASE("Config warns and falls back for invalid Start useLiteralZero")
     CHECK(warnings.join(QLatin1Char('\n')).contains(QStringLiteral("config.commands.start.useLiteralZero")));
 }
 
+TEST_CASE("Config accepts added theme names")
+{
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+
+    QStringList warnings;
+    const AppConfig oneDark = loadAppConfig(writeConfig(directory, R"json({"theme": "onedark"})json"), &warnings);
+    CHECK(warnings.isEmpty());
+    CHECK(oneDark.theme == Theme::OneDark);
+
+    warnings.clear();
+    const AppConfig vsCode = loadAppConfig(writeConfig(directory, R"json({"theme": "vscode"})json"), &warnings);
+    CHECK(warnings.isEmpty());
+    CHECK(vsCode.theme == Theme::VsCodeDefault);
+
+    warnings.clear();
+    const AppConfig tokyoNight =
+        loadAppConfig(writeConfig(directory, R"json({"theme": "tokyo-night"})json"), &warnings);
+    CHECK(warnings.isEmpty());
+    CHECK(tokyoNight.theme == Theme::TokyoNight);
+
+    warnings.clear();
+    const AppConfig dracula = loadAppConfig(writeConfig(directory, R"json({"theme": "dracula"})json"), &warnings);
+    CHECK(warnings.isEmpty());
+    CHECK(dracula.theme == Theme::Dracula);
+}
+
 TEST_CASE("Config accepts stop/freeze reason labels")
 {
     CHECK(stopFreezeReasonLabel(RecessReason) == QStringLiteral("Recess"));

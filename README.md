@@ -2,7 +2,8 @@
 
 DISPatch is a small Qt5/C++ DIS6 Simulation Management controller. It sends
 state-transition commands over UDP and displays received component responses.
-The UI defaults to a dark theme and includes dark, light, and Gruvbox themes.
+The UI defaults to a dark theme and includes dark, light, Gruvbox, One Dark,
+VS Code default, Tokyo Night, and Dracula themes.
 
 ## Build Dependencies
 
@@ -69,7 +70,7 @@ directory and then next to the executable. You can pass an explicit path with
 
 The config file supplies startup defaults for theme, network addresses and
 ports, DIS entity IDs, command settings, and frozen behavior. The theme can be
-`dark`, `light`, or `gruvbox`.
+`dark`, `light`, `gruvbox`, `onedark`, `vscode`, `tokyonight`, or `dracula`.
 
 The network section also controls UDP socket behavior. `shareAddress` and
 `reuseAddress` allow multiple processes to bind the same UDP port on one

@@ -9,7 +9,11 @@ namespace dispatch {
 enum class Theme : quint8 {
     Dark,
     Light,
-    Gruvbox
+    Gruvbox,
+    OneDark,
+    VsCodeDefault,
+    TokyoNight,
+    Dracula
 };
 
 auto themePalette(Theme theme) -> QPalette;
