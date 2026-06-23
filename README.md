@@ -19,6 +19,26 @@ cmake -S . -B build
 cmake --build build
 ```
 
+Tests are optional and use Catch2:
+
+```bash
+cmake -S . -B build-tests -DDISPATCH_WITH_TESTS=ON
+cmake --build build-tests
+ctest --test-dir build-tests
+```
+
+CLion can import the included `CMakePresets.json`. Select the `tests` preset
+to configure with `DISPATCH_WITH_TESTS=ON`; CLion will discover the CTest
+tests, and the `check` build preset/target builds and runs them with failure
+output enabled.
+
+The project also includes a Conan 2 recipe. The `tests` option controls the
+same CMake variable:
+
+```bash
+conan build . -o tests=True
+```
+
 ## DIS6 Command Mapping
 
 The application uses standard DIS6 Simulation Management PDU layouts:
@@ -37,7 +57,8 @@ Set command defaults in `DISPatch_config.json` so they match the simulation
 component interface control document. The Start command supports
 `realWorldTimeOffsetSeconds` and `simulationTimeOffsetSeconds`, which default
 to `0` and schedule the Start/Resume PDU clock-time fields relative to the
-current UTC time.
+current UTC time. Set `useLiteralZero` to `true` in the `start` block when the
+Start/Resume PDU should write literal zero clock-time values instead.
 
 ## Configuration
 

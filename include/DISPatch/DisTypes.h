@@ -30,6 +30,7 @@ struct DisConfig {
     quint32 initializeActionId = 39;
     int startRealWorldTimeOffsetSeconds = 0;
     int startSimulationTimeOffsetSeconds = 0;
+    bool startUseLiteralZero = false;
     quint8 pauseFrozenBehavior = 0;
     quint8 stopFrozenBehavior = 0;
     quint8 resetFrozenBehavior = 0;

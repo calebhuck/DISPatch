@@ -602,6 +602,7 @@ auto MainWindow::currentConfig(bool *configOk) const -> DisConfig
     config.initializeActionId = appConfig_.initializeActionId;
     config.startRealWorldTimeOffsetSeconds = appConfig_.startRealWorldTimeOffsetSeconds;
     config.startSimulationTimeOffsetSeconds = appConfig_.startSimulationTimeOffsetSeconds;
+    config.startUseLiteralZero = appConfig_.startUseLiteralZero;
     config.pauseFrozenBehavior = appConfig_.pauseFrozenBehavior;
     config.stopFrozenBehavior = appConfig_.stopFrozenBehavior;
     config.resetFrozenBehavior = appConfig_.resetFrozenBehavior;
@@ -874,9 +875,13 @@ void MainWindow::sendStateCommand(SimulationCommand command)
     requestStates_[requestId] = commandName(command);
     QString detail;
     if (command == SimulationCommand::Start) {
-        detail = QStringLiteral(", real-world +%1s, simulation +%2s")
-                     .arg(config.startRealWorldTimeOffsetSeconds)
-                     .arg(config.startSimulationTimeOffsetSeconds);
+        if (config.startUseLiteralZero) {
+            detail = QStringLiteral(", clock times literal zero");
+        } else {
+            detail = QStringLiteral(", real-world +%1s, simulation +%2s")
+                         .arg(config.startRealWorldTimeOffsetSeconds)
+                         .arg(config.startSimulationTimeOffsetSeconds);
+        }
     } else if (command == SimulationCommand::Pause
                || command == SimulationCommand::Stop
                || command == SimulationCommand::Reset) {

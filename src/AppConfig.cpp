@@ -77,7 +77,8 @@ auto actionConfigKeys() -> const QStringList &
 auto startConfigKeys() -> const QStringList &
 {
     static const QStringList keys{QStringLiteral("realWorldTimeOffsetSeconds"),
-                                  QStringLiteral("simulationTimeOffsetSeconds")};
+                                  QStringLiteral("simulationTimeOffsetSeconds"),
+                                  QStringLiteral("useLiteralZero")};
     return keys;
 }
 
@@ -494,26 +495,13 @@ auto isBroadcastAddress(const QHostAddress &address) -> bool
         || address.toString() == QString::fromLatin1(BroadcastDestinationAddress);
 }
 
-auto loadAppConfig(QStringList *warnings) -> AppConfig
+auto loadAppConfig(const QString &path, QStringList *warnings) -> AppConfig
 {
     AppConfig config;
-    QString configPath;
-    for (const QString &path : configSearchPaths()) {
-        if (QFile::exists(path)) {
-            configPath = path;
-            break;
-        }
-    }
-
-    if (configPath.isEmpty()) {
-        warnings->append(QStringLiteral("No DISPatch_config.json found; using built-in defaults"));
-        return config;
-    }
-
-    QFile file(configPath);
+    QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
         warnings->append(QStringLiteral("Could not open %1: %2; using built-in defaults")
-                             .arg(configPath, file.errorString()));
+                             .arg(path, file.errorString()));
         return config;
     }
 
@@ -521,11 +509,11 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
         warnings->append(QStringLiteral("Could not parse %1: %2; using built-in defaults")
-                             .arg(configPath, parseError.errorString()));
+                             .arg(path, parseError.errorString()));
         return config;
     }
 
-    config.configPath = configPath;
+    config.configPath = path;
     const QJsonObject root = document.object();
     warnUnknownKeys(root, rootConfigKeys(), warnings, QStringLiteral("config"));
 
@@ -652,6 +640,11 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
                                                       MaxTimeOffsetSeconds,
                                                       warnings,
                                                       QStringLiteral("config.commands.start"));
+    config.startUseLiteralZero = readBool(start,
+                                          QStringLiteral("useLiteralZero"),
+                                          config.startUseLiteralZero,
+                                          warnings,
+                                          QStringLiteral("config.commands.start"));
 
     const QJsonObject pause = readObject(commands, QStringLiteral("pause"), warnings, QStringLiteral("config.commands"));
     warnUnknownKeys(pause, stopFreezeConfigKeys(), warnings, QStringLiteral("config.commands.pause"));
@@ -732,6 +725,18 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
     validateNetworkConfig(config, warnings);
 
     return config;
+}
+
+auto loadAppConfig(QStringList *warnings) -> AppConfig
+{
+    for (const QString &path : configSearchPaths()) {
+        if (QFile::exists(path)) {
+            return loadAppConfig(path, warnings);
+        }
+    }
+
+    warnings->append(QStringLiteral("No DISPatch_config.json found; using built-in defaults"));
+    return {};
 }
 
 } // namespace dispatch

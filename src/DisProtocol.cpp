@@ -55,6 +55,12 @@ void appendClockTime(QDataStream &out, int offsetSeconds)
     out << timePastHour;
 }
 
+void appendLiteralZeroClockTime(QDataStream &out)
+{
+    out << static_cast<quint32>(0);
+    out << static_cast<quint32>(0);
+}
+
 } // namespace
 
 auto commandName(SimulationCommand command) -> QString
@@ -161,8 +167,13 @@ auto makeStartResumePdu(const DisConfig &config, quint32 requestId) -> QByteArra
 
     writeEntityId(out, config.managerId);
     writeEntityId(out, config.targetId);
-    appendClockTime(out, config.startRealWorldTimeOffsetSeconds);
-    appendClockTime(out, config.startSimulationTimeOffsetSeconds);
+    if (config.startUseLiteralZero) {
+        appendLiteralZeroClockTime(out);
+        appendLiteralZeroClockTime(out);
+    } else {
+        appendClockTime(out, config.startRealWorldTimeOffsetSeconds);
+        appendClockTime(out, config.startSimulationTimeOffsetSeconds);
+    }
     out << requestId;
 
     return bytes;
