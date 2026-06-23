@@ -23,18 +23,21 @@ cmake --build build
 
 The application uses standard DIS6 Simulation Management PDU layouts:
 
-- `Startup`: Action Request PDU, default action ID `1`
-- `Standby`: Stop/Freeze PDU, default reason `recess`
-- `Operate`: Start/Resume PDU
-- `Shutdown`: Action Request PDU, default action ID `2`
+- `Initialize`: Action Request PDU, default action ID `39` for initialize internal parameters
+- `Start`: Start/Resume PDU
+- `Pause`: Stop/Freeze PDU, reason `recess`
+- `Stop`: Stop/Freeze PDU, reason `termination`
+- `Reset`: Stop/Freeze PDU, reason `stop_for_reset`
 
 Responses received on the configured listen address and port are decoded enough
 to show the sender, PDU type, request ID, and a summary. Acknowledge and Action
 Response PDUs are matched back to the request ID sent by the manager.
 
-Set the Startup and Shutdown action IDs and the Standby Stop/Freeze reason in
-`DISPatch_config.json` so they match the simulation component interface control
-document.
+Set command defaults in `DISPatch_config.json` so they match the simulation
+component interface control document. The Start command supports
+`realWorldTimeOffsetSeconds` and `simulationTimeOffsetSeconds`, which default
+to `0` and schedule the Start/Resume PDU clock-time fields relative to the
+current UTC time.
 
 ## Configuration
 
@@ -43,10 +46,8 @@ directory and then next to the executable. You can pass an explicit path with
 `--config path/to/DISPatch_config.json`.
 
 The config file supplies startup defaults for theme, network addresses and
-ports, DIS entity IDs, action IDs, and the Standby Stop/Freeze reason and
-frozen behavior. The sample config uses `"reason": "recess"`, but the reason
-can also be a numeric DIS value. The theme can be `dark`, `light`, or
-`gruvbox`.
+ports, DIS entity IDs, command settings, and frozen behavior. The theme can be
+`dark`, `light`, or `gruvbox`.
 
 The network section also controls UDP socket behavior. `shareAddress` and
 `reuseAddress` allow multiple processes to bind the same UDP port on one
@@ -87,10 +88,10 @@ UDP port without address reuse enabled.
 Set `testFederate.enabled` in `DISPatch_config.json` to run an in-process UDP
 responder for local testing. When enabled, the UI shows a Test Federate status
 line with the bind state and editable site/application/entity controls. The
-startup ID comes from `testFederate.entityId`. It listens on the configured
+entity ID comes from `testFederate.entityId`. It listens on the configured
 destination address and port, accepts DIS6 Simulation Management
 state-transition requests addressed to that entity ID, and sends accepted
 responses back to the manager:
 
-- `Startup` and `Shutdown`: Action Response PDU
-- `Standby` and `Operate`: Acknowledge PDU
+- `Initialize`: Action Response PDU
+- `Start`, `Pause`, `Stop`, and `Reset`: Acknowledge PDU

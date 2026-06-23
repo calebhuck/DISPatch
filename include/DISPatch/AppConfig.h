@@ -31,10 +31,12 @@ struct AppConfig {
     quint8 exerciseId = 1;
     EntityId managerId;
     EntityId targetId = EntityId{1, 1, 0};
-    quint32 startupActionId = 1;
-    quint32 shutdownActionId = 2;
-    quint8 standbyReason = 1;
-    quint8 standbyFrozenBehavior = 0;
+    quint32 initializeActionId = 39;
+    int startRealWorldTimeOffsetSeconds = 0;
+    int startSimulationTimeOffsetSeconds = 0;
+    quint8 pauseFrozenBehavior = 0;
+    quint8 stopFrozenBehavior = 0;
+    quint8 resetFrozenBehavior = 0;
     Theme theme = Theme::Dark;
     bool logs = false;
     QString logFile = QStringLiteral("DISPatch.log");

@@ -27,15 +27,21 @@
     }
   },
   "commands": {
-    "startup": {
-      "actionId": 1
+    "initialize": {
+      "actionId": 39
     },
-    "standby": {
-      "reason": "recess",
+    "start": {
+      "realWorldTimeOffsetSeconds": 0,
+      "simulationTimeOffsetSeconds": 0
+    },
+    "pause": {
       "frozenBehavior": 0
     },
-    "shutdown": {
-      "actionId": 2
+    "stop": {
+      "frozenBehavior": 0
+    },
+    "reset": {
+      "frozenBehavior": 0
     }
   },
   "log": {

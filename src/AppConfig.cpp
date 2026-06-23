@@ -60,9 +60,11 @@ auto entityIdConfigKeys() -> const QStringList &
 
 auto commandsConfigKeys() -> const QStringList &
 {
-    static const QStringList keys{QStringLiteral("startup"),
-                                  QStringLiteral("standby"),
-                                  QStringLiteral("shutdown")};
+    static const QStringList keys{QStringLiteral("initialize"),
+                                  QStringLiteral("start"),
+                                  QStringLiteral("pause"),
+                                  QStringLiteral("stop"),
+                                  QStringLiteral("reset")};
     return keys;
 }
 
@@ -72,10 +74,16 @@ auto actionConfigKeys() -> const QStringList &
     return keys;
 }
 
-auto standbyConfigKeys() -> const QStringList &
+auto startConfigKeys() -> const QStringList &
 {
-    static const QStringList keys{QStringLiteral("reason"),
-                                  QStringLiteral("frozenBehavior")};
+    static const QStringList keys{QStringLiteral("realWorldTimeOffsetSeconds"),
+                                  QStringLiteral("simulationTimeOffsetSeconds")};
+    return keys;
+}
+
+auto stopFreezeConfigKeys() -> const QStringList &
+{
+    static const QStringList keys{QStringLiteral("frozenBehavior")};
     return keys;
 }
 
@@ -617,36 +625,63 @@ auto loadAppConfig(QStringList *warnings) -> AppConfig
 
     const QJsonObject commands = readObject(root, QStringLiteral("commands"), warnings, QStringLiteral("config"));
     warnUnknownKeys(commands, commandsConfigKeys(), warnings, QStringLiteral("config.commands"));
-    const QJsonObject startup = readObject(commands, QStringLiteral("startup"), warnings, QStringLiteral("config.commands"));
-    warnUnknownKeys(startup, actionConfigKeys(), warnings, QStringLiteral("config.commands.startup"));
-    config.startupActionId = static_cast<quint32>(readInt(startup,
-                                                          QStringLiteral("actionId"),
-                                                          static_cast<int>(config.startupActionId),
-                                                          0,
-                                                          MaxActionId,
-                                                          warnings,
-                                                          QStringLiteral("config.commands.startup")));
-    const QJsonObject standby = readObject(commands, QStringLiteral("standby"), warnings, QStringLiteral("config.commands"));
-    warnUnknownKeys(standby, standbyConfigKeys(), warnings, QStringLiteral("config.commands.standby"));
-    config.standbyReason =
-        readReason(standby, QStringLiteral("reason"), config.standbyReason, warnings, QStringLiteral("config.commands.standby"));
-    config.standbyFrozenBehavior = static_cast<quint8>(readInt(standby,
-                                                               QStringLiteral("frozenBehavior"),
-                                                               config.standbyFrozenBehavior,
-                                                               0,
-                                                               MaxUint8Value,
-                                                               warnings,
-                                                               QStringLiteral("config.commands.standby")));
-    const QJsonObject shutdown =
-        readObject(commands, QStringLiteral("shutdown"), warnings, QStringLiteral("config.commands"));
-    warnUnknownKeys(shutdown, actionConfigKeys(), warnings, QStringLiteral("config.commands.shutdown"));
-    config.shutdownActionId = static_cast<quint32>(readInt(shutdown,
-                                                           QStringLiteral("actionId"),
-                                                           static_cast<int>(config.shutdownActionId),
-                                                           0,
-                                                           MaxActionId,
-                                                           warnings,
-                                                           QStringLiteral("config.commands.shutdown")));
+    const QJsonObject initialize =
+        readObject(commands, QStringLiteral("initialize"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(initialize, actionConfigKeys(), warnings, QStringLiteral("config.commands.initialize"));
+    config.initializeActionId = static_cast<quint32>(readInt(initialize,
+                                                            QStringLiteral("actionId"),
+                                                            static_cast<int>(config.initializeActionId),
+                                                            0,
+                                                            MaxActionId,
+                                                            warnings,
+                                                            QStringLiteral("config.commands.initialize")));
+
+    const QJsonObject start = readObject(commands, QStringLiteral("start"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(start, startConfigKeys(), warnings, QStringLiteral("config.commands.start"));
+    config.startRealWorldTimeOffsetSeconds = readInt(start,
+                                                     QStringLiteral("realWorldTimeOffsetSeconds"),
+                                                     config.startRealWorldTimeOffsetSeconds,
+                                                     0,
+                                                     MaxTimeOffsetSeconds,
+                                                     warnings,
+                                                     QStringLiteral("config.commands.start"));
+    config.startSimulationTimeOffsetSeconds = readInt(start,
+                                                      QStringLiteral("simulationTimeOffsetSeconds"),
+                                                      config.startSimulationTimeOffsetSeconds,
+                                                      0,
+                                                      MaxTimeOffsetSeconds,
+                                                      warnings,
+                                                      QStringLiteral("config.commands.start"));
+
+    const QJsonObject pause = readObject(commands, QStringLiteral("pause"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(pause, stopFreezeConfigKeys(), warnings, QStringLiteral("config.commands.pause"));
+    config.pauseFrozenBehavior = static_cast<quint8>(readInt(pause,
+                                                             QStringLiteral("frozenBehavior"),
+                                                             config.pauseFrozenBehavior,
+                                                             0,
+                                                             MaxUint8Value,
+                                                             warnings,
+                                                             QStringLiteral("config.commands.pause")));
+
+    const QJsonObject stop = readObject(commands, QStringLiteral("stop"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(stop, stopFreezeConfigKeys(), warnings, QStringLiteral("config.commands.stop"));
+    config.stopFrozenBehavior = static_cast<quint8>(readInt(stop,
+                                                            QStringLiteral("frozenBehavior"),
+                                                            config.stopFrozenBehavior,
+                                                            0,
+                                                            MaxUint8Value,
+                                                            warnings,
+                                                            QStringLiteral("config.commands.stop")));
+
+    const QJsonObject reset = readObject(commands, QStringLiteral("reset"), warnings, QStringLiteral("config.commands"));
+    warnUnknownKeys(reset, stopFreezeConfigKeys(), warnings, QStringLiteral("config.commands.reset"));
+    config.resetFrozenBehavior = static_cast<quint8>(readInt(reset,
+                                                             QStringLiteral("frozenBehavior"),
+                                                             config.resetFrozenBehavior,
+                                                             0,
+                                                             MaxUint8Value,
+                                                             warnings,
+                                                             QStringLiteral("config.commands.reset")));
 
     const QJsonObject log = readObject(root, QStringLiteral("log"), warnings, QStringLiteral("config"));
     warnUnknownKeys(log, logConfigKeys(), warnings, QStringLiteral("config.log"));

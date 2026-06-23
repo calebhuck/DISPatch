@@ -57,7 +57,7 @@ private:
     void clearDummyFederateMulticastGroup();
     auto updateListenMulticastGroup() -> bool;
     void updateDummyFederateMulticastGroup(const QHostAddress &group);
-    void addStateButton(QGridLayout *layout, const QString &label, SimulationState state, int row, int column);
+    void addStateButton(QGridLayout *layout, const QString &label, SimulationCommand command, int row, int column);
     auto currentConfig(bool *configOk = nullptr) const -> DisConfig;
     [[nodiscard]] auto currentTestFederateId() const -> EntityId;
     [[nodiscard]] auto currentTargetId() const -> EntityId;
@@ -68,7 +68,7 @@ private:
     void setDestinationMode(DestinationMode mode);
     void bindListenSocket();
     void bindDummyFederateSocket();
-    void sendStateCommand(SimulationState state);
+    void sendStateCommand(SimulationCommand command);
     void readDatagrams();
     void readDummyFederateDatagrams();
     void respondFromDummyFederate(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort);

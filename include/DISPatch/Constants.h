@@ -13,12 +13,13 @@ constexpr quint8 MaxExerciseId = 255;
 constexpr quint8 MaxUint8Value = 255;
 constexpr quint16 MaxUdpPort = 65535;
 constexpr int MaxActionId = 2147483647;
+constexpr int MaxTimeOffsetSeconds = 2147483647;
 constexpr int SecondsPerHour = 3600;
 constexpr int SecondsPerMinute = 60;
 constexpr int MillisecondsPerSecond = 1000;
-constexpr quint64 MillisecondsPerDay = 86400000ULL;
-constexpr int DisTimestampFractionBits = 31;
-constexpr qint64 DisTimeUnitsPerSecond = 65536LL;
+constexpr int MillisecondsPerHour = SecondsPerHour * MillisecondsPerSecond;
+constexpr quint32 DisTimestampAbsoluteBit = 0x00000001U;
+constexpr quint64 DisTimeUnitsPerHour = 0x80000000ULL;
 constexpr int BitsPerByte = 8;
 constexpr int ThreeByteShift = 24;
 constexpr int TwoByteShift = 16;
@@ -61,6 +62,10 @@ constexpr int RebindIntervalMilliseconds = 1000;
 constexpr int StateButtonMinimumHeight = 36;
 inline constexpr const char *BroadcastDestinationAddress = "255.255.255.255";
 inline constexpr const char *LocalhostDestinationAddress = "127.0.0.1";
+constexpr quint32 InitializeInternalParametersActionId = 39;
+constexpr quint8 RecessReason = 1;
+constexpr quint8 TerminationReason = 2;
+constexpr quint8 StopForResetReason = 6;
 
 enum PduType : quint8 {
     StartResumePdu = 13,

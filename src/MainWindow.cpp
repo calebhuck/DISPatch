@@ -105,12 +105,13 @@ MainWindow::MainWindow(QWidget *parent)
         }
     }
 
-    auto *stateGroup = new QGroupBox(QStringLiteral("State Commands"), central);
+    auto *stateGroup = new QGroupBox(QStringLiteral("Simulation Commands"), central);
     auto *stateLayout = new QGridLayout(stateGroup);
-    addStateButton(stateLayout, QStringLiteral("Startup"), SimulationState::Startup, 0, 0);
-    addStateButton(stateLayout, QStringLiteral("Operate"), SimulationState::Operate, 0, 1);
-    addStateButton(stateLayout, QStringLiteral("Standby"), SimulationState::Standby, 1, 0);
-    addStateButton(stateLayout, QStringLiteral("Shutdown"), SimulationState::Shutdown, 1, 1);
+    addStateButton(stateLayout, QStringLiteral("Initialize"), SimulationCommand::Initialize, 0, 0);
+    addStateButton(stateLayout, QStringLiteral("Start"), SimulationCommand::Start, 0, 1);
+    addStateButton(stateLayout, QStringLiteral("Pause"), SimulationCommand::Pause, 0, 2);
+    addStateButton(stateLayout, QStringLiteral("Stop"), SimulationCommand::Stop, 1, 0);
+    addStateButton(stateLayout, QStringLiteral("Reset"), SimulationCommand::Reset, 1, 1);
 
     auto *disGroup = new QGroupBox(QStringLiteral("DIS Identity"), central);
     auto *disLayout = new QGridLayout(disGroup);
@@ -580,11 +581,11 @@ void MainWindow::updateDummyFederateMulticastGroup(const QHostAddress &group)
     joinedDummyFederateMulticastInterface_ = interface;
 }
 
-void MainWindow::addStateButton(QGridLayout *layout, const QString &label, SimulationState state, int row, int column)
+void MainWindow::addStateButton(QGridLayout *layout, const QString &label, SimulationCommand command, int row, int column)
 {
     auto *button = new QPushButton(label, this);
     button->setMinimumHeight(StateButtonMinimumHeight);
-    connect(button, &QPushButton::clicked, this, [this, state]() -> void { sendStateCommand(state); });
+    connect(button, &QPushButton::clicked, this, [this, command]() -> void { sendStateCommand(command); });
     layout->addWidget(button, row, column);
 }
 
@@ -598,10 +599,12 @@ auto MainWindow::currentConfig(bool *configOk) const -> DisConfig
     config.exerciseId = static_cast<quint8>(exerciseSpin_->value());
     config.managerId = makeEntityId(managerSiteSpin_, managerApplicationSpin_, managerEntitySpin_);
     config.targetId = makeEntityId(targetSiteSpin_, targetApplicationSpin_, targetEntitySpin_);
-    config.startupActionId = appConfig_.startupActionId;
-    config.shutdownActionId = appConfig_.shutdownActionId;
-    config.standbyReason = appConfig_.standbyReason;
-    config.standbyFrozenBehavior = appConfig_.standbyFrozenBehavior;
+    config.initializeActionId = appConfig_.initializeActionId;
+    config.startRealWorldTimeOffsetSeconds = appConfig_.startRealWorldTimeOffsetSeconds;
+    config.startSimulationTimeOffsetSeconds = appConfig_.startSimulationTimeOffsetSeconds;
+    config.pauseFrozenBehavior = appConfig_.pauseFrozenBehavior;
+    config.stopFrozenBehavior = appConfig_.stopFrozenBehavior;
+    config.resetFrozenBehavior = appConfig_.resetFrozenBehavior;
 
     if (configOk != nullptr) {
         *configOk = destinationOk && listenOk;
@@ -829,7 +832,7 @@ void MainWindow::bindDummyFederateSocket()
                   .arg(config.destinationPort));
 }
 
-void MainWindow::sendStateCommand(SimulationState state)
+void MainWindow::sendStateCommand(SimulationCommand command)
 {
     bool configOk = false;
     const auto config = currentConfig(&configOk);
@@ -844,36 +847,45 @@ void MainWindow::sendStateCommand(SimulationState state)
     bindListenSocket();
     const quint32 requestId = nextRequestId_++;
     QByteArray pdu;
-    switch (state) {
-    case SimulationState::Startup:
-    case SimulationState::Shutdown:
-        pdu = makeActionRequestPdu(config, requestId, state);
+    switch (command) {
+    case SimulationCommand::Initialize:
+        pdu = makeActionRequestPdu(config, requestId);
         break;
-    case SimulationState::Standby:
-        pdu = makeStopFreezePdu(config, requestId);
-        break;
-    case SimulationState::Operate:
+    case SimulationCommand::Start:
         pdu = makeStartResumePdu(config, requestId);
+        break;
+    case SimulationCommand::Pause:
+    case SimulationCommand::Stop:
+    case SimulationCommand::Reset:
+        pdu = makeStopFreezePdu(config, requestId, command);
         break;
     }
 
     const auto written = socket_->writeDatagram(pdu, config.destinationAddress, config.destinationPort);
     if (written != pdu.size()) {
         appendLog(QStringLiteral("Failed to send %1 request %2: %3")
-                      .arg(stateName(state))
+                      .arg(commandName(command))
                       .arg(requestId)
                       .arg(socket_->errorString()),
                   LogLevel::Error);
         return;
     }
 
-    requestStates_[requestId] = stateName(state);
+    requestStates_[requestId] = commandName(command);
     QString detail;
-    if (state == SimulationState::Standby) {
-        detail = QStringLiteral(", reason %1").arg(stopFreezeReasonLabel(config.standbyReason));
+    if (command == SimulationCommand::Start) {
+        detail = QStringLiteral(", real-world +%1s, simulation +%2s")
+                     .arg(config.startRealWorldTimeOffsetSeconds)
+                     .arg(config.startSimulationTimeOffsetSeconds);
+    } else if (command == SimulationCommand::Pause
+               || command == SimulationCommand::Stop
+               || command == SimulationCommand::Reset) {
+        detail = QStringLiteral(", reason %1").arg(stopFreezeReasonLabel(stopFreezeReasonForCommand(command)));
+    } else if (command == SimulationCommand::Initialize) {
+        detail = QStringLiteral(", action %1").arg(config.initializeActionId);
     }
     appendLog(QStringLiteral("Sent %1 request %2 to %3:%4 (%5 bytes%6)")
-                  .arg(stateName(state))
+                  .arg(commandName(command))
                   .arg(requestId)
                   .arg(config.destinationAddress.toString())
                   .arg(config.destinationPort)

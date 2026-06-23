@@ -13,12 +13,12 @@ namespace {
 
 auto disTimestamp() -> quint32
 {
-    const auto now = QTime::currentTime();
-    const auto milliseconds =
-        static_cast<quint32>(((now.hour() * SecondsPerHour + now.minute() * SecondsPerMinute + now.second())
-                              * MillisecondsPerSecond) + now.msec());
-    return static_cast<quint32>((static_cast<quint64>(milliseconds) << DisTimestampFractionBits)
-                                / MillisecondsPerDay);
+    const QTime now = QDateTime::currentDateTimeUtc().time();
+    const quint64 milliseconds = static_cast<quint64>(now.minute() * SecondsPerMinute * MillisecondsPerSecond
+                                                      + now.second() * MillisecondsPerSecond
+                                                      + now.msec());
+    const quint64 timePastHour = (milliseconds * DisTimeUnitsPerHour) / MillisecondsPerHour;
+    return static_cast<quint32>((timePastHour << 1U) | DisTimestampAbsoluteBit);
 }
 
 void writeEntityId(QDataStream &out, const EntityId &entityId)
@@ -41,32 +41,35 @@ auto makeHeader(const DisConfig &config, PduType pduType, quint16 length) -> QBy
     return bytes;
 }
 
-void appendRealWorldTime(QDataStream &out)
+void appendClockTime(QDataStream &out, int offsetSeconds)
 {
-    const auto now = QDateTime::currentDateTimeUtc();
-    out << static_cast<quint32>(now.date().toJulianDay());
-    out << static_cast<quint32>((now.time().msecsSinceStartOfDay() * DisTimeUnitsPerSecond)
-                                / MillisecondsPerSecond);
-}
-
-void appendSimulationTime(QDataStream &out)
-{
-    appendRealWorldTime(out);
+    const QDateTime time = QDateTime::currentDateTimeUtc().addSecs(offsetSeconds);
+    const qint64 secondsSinceEpoch = time.toSecsSinceEpoch();
+    const auto hour = static_cast<quint32>(secondsSinceEpoch / SecondsPerHour);
+    const quint64 millisecondsPastHour =
+        static_cast<quint64>((secondsSinceEpoch % SecondsPerHour) * MillisecondsPerSecond
+                             + time.time().msec());
+    const auto timePastHour =
+        static_cast<quint32>((millisecondsPastHour * DisTimeUnitsPerHour) / MillisecondsPerHour);
+    out << hour;
+    out << timePastHour;
 }
 
 } // namespace
 
-auto stateName(SimulationState state) -> QString
+auto commandName(SimulationCommand command) -> QString
 {
-    switch (state) {
-    case SimulationState::Startup:
-        return QStringLiteral("Startup");
-    case SimulationState::Standby:
-        return QStringLiteral("Standby");
-    case SimulationState::Operate:
-        return QStringLiteral("Operate");
-    case SimulationState::Shutdown:
-        return QStringLiteral("Shutdown");
+    switch (command) {
+    case SimulationCommand::Initialize:
+        return QStringLiteral("Initialize");
+    case SimulationCommand::Start:
+        return QStringLiteral("Start");
+    case SimulationCommand::Pause:
+        return QStringLiteral("Pause");
+    case SimulationCommand::Stop:
+        return QStringLiteral("Stop");
+    case SimulationCommand::Reset:
+        return QStringLiteral("Reset");
     }
 
     return QStringLiteral("Unknown");
@@ -81,6 +84,40 @@ auto stopFreezeReasonLabel(quint8 reason) -> QString
     }
 
     return QStringLiteral("Reason %1").arg(reason);
+}
+
+auto stopFreezeReasonForCommand(SimulationCommand command) -> quint8
+{
+    switch (command) {
+    case SimulationCommand::Pause:
+        return RecessReason;
+    case SimulationCommand::Stop:
+        return TerminationReason;
+    case SimulationCommand::Reset:
+        return StopForResetReason;
+    case SimulationCommand::Initialize:
+    case SimulationCommand::Start:
+        return RecessReason;
+    }
+
+    return RecessReason;
+}
+
+auto frozenBehaviorForCommand(const DisConfig &config, SimulationCommand command) -> quint8
+{
+    switch (command) {
+    case SimulationCommand::Pause:
+        return config.pauseFrozenBehavior;
+    case SimulationCommand::Stop:
+        return config.stopFrozenBehavior;
+    case SimulationCommand::Reset:
+        return config.resetFrozenBehavior;
+    case SimulationCommand::Initialize:
+    case SimulationCommand::Start:
+        return 0;
+    }
+
+    return 0;
 }
 
 auto pduTypeName(quint8 pduType) -> QString
@@ -124,14 +161,14 @@ auto makeStartResumePdu(const DisConfig &config, quint32 requestId) -> QByteArra
 
     writeEntityId(out, config.managerId);
     writeEntityId(out, config.targetId);
-    appendRealWorldTime(out);
-    appendSimulationTime(out);
+    appendClockTime(out, config.startRealWorldTimeOffsetSeconds);
+    appendClockTime(out, config.startSimulationTimeOffsetSeconds);
     out << requestId;
 
     return bytes;
 }
 
-auto makeStopFreezePdu(const DisConfig &config, quint32 requestId) -> QByteArray
+auto makeStopFreezePdu(const DisConfig &config, quint32 requestId, SimulationCommand command) -> QByteArray
 {
     constexpr quint16 length = StopFreezePduLength;
     QByteArray bytes = makeHeader(config, StopFreezePdu, length);
@@ -140,20 +177,18 @@ auto makeStopFreezePdu(const DisConfig &config, quint32 requestId) -> QByteArray
 
     writeEntityId(out, config.managerId);
     writeEntityId(out, config.targetId);
-    appendRealWorldTime(out);
-    out << config.standbyReason;
-    out << config.standbyFrozenBehavior;
+    appendClockTime(out, 0);
+    out << stopFreezeReasonForCommand(command);
+    out << frozenBehaviorForCommand(config, command);
     out << static_cast<quint16>(0);
     out << requestId;
 
     return bytes;
 }
 
-auto makeActionRequestPdu(const DisConfig &config, quint32 requestId, SimulationState state) -> QByteArray
+auto makeActionRequestPdu(const DisConfig &config, quint32 requestId) -> QByteArray
 {
     constexpr quint16 length = ActionRequestPduLength;
-    const quint32 actionId =
-        state == SimulationState::Startup ? config.startupActionId : config.shutdownActionId;
 
     QByteArray bytes = makeHeader(config, ActionRequestPdu, length);
     QDataStream out(&bytes, QIODevice::Append);
@@ -162,7 +197,7 @@ auto makeActionRequestPdu(const DisConfig &config, quint32 requestId, Simulation
     writeEntityId(out, config.managerId);
     writeEntityId(out, config.targetId);
     out << requestId;
-    out << actionId;
+    out << config.initializeActionId;
     out << static_cast<quint32>(0);
     out << static_cast<quint32>(0);
 
