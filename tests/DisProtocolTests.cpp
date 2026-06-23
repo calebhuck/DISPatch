@@ -91,4 +91,14 @@ TEST_CASE("Stop/Freeze commands use their standard reasons")
     CHECK(requestIdFromResponse(reset, StopFreezePdu) == 3);
 }
 
+TEST_CASE("Malformed Start/Resume PDU does not report a bogus request ID")
+{
+    const DisConfig config = testConfig();
+    QByteArray pdu = makeStartResumePdu(config, 0x01020304U);
+
+    pdu.truncate(StopFreezePduLength);
+
+    CHECK(requestIdFromResponse(pdu, StartResumePdu) == 0);
+}
+
 } // namespace dispatch

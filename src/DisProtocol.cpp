@@ -351,8 +351,11 @@ auto requestIdFromResponse(const QByteArray &datagram, quint8 pduType) -> quint3
     if (pduType == ActionRequestPdu && datagram.size() >= ActionResponseStatusOffset) {
         return readU32(datagram, RequestIdOffset);
     }
-    if ((pduType == StartResumePdu || pduType == StopFreezePdu) && datagram.size() >= StopFreezePduLength) {
-        return readU32(datagram, datagram.size() - RequestIdByteLength);
+    if (pduType == StartResumePdu && datagram.size() >= StartResumePduLength) {
+        return readU32(datagram, StartResumeRequestIdOffset);
+    }
+    if (pduType == StopFreezePdu && datagram.size() >= StopFreezePduLength) {
+        return readU32(datagram, StopFreezeRequestIdOffset);
     }
     return 0;
 }

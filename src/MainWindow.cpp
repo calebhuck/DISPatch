@@ -37,6 +37,162 @@
 
 namespace dispatch {
 
+namespace {
+
+auto peerString(const QHostAddress &address, quint16 port) -> QString
+{
+    return QStringLiteral("%1:%2").arg(address.toString()).arg(port);
+}
+
+auto minimumPduLength(quint8 pduType) -> int
+{
+    switch (pduType) {
+    case StartResumePdu:
+        return StartResumePduLength;
+    case StopFreezePdu:
+        return StopFreezePduLength;
+    case AcknowledgePdu:
+        return AcknowledgePduLength;
+    case ActionRequestPdu:
+        return ActionRequestPduLength;
+    case ActionResponsePdu:
+        return ActionResponsePduLength;
+    default:
+        return 0;
+    }
+}
+
+auto isResponsePduType(quint8 pduType) -> bool
+{
+    return pduType == AcknowledgePdu || pduType == ActionResponsePdu;
+}
+
+auto isRequestPduType(quint8 pduType) -> bool
+{
+    return pduType == StartResumePdu || pduType == StopFreezePdu || pduType == ActionRequestPdu;
+}
+
+void addCommonDatagramWarnings(const QByteArray &datagram, const DisConfig &config, QStringList *warnings)
+{
+    if (datagram.size() < DisHeaderLength) {
+        warnings->append(QStringLiteral("too short for a DIS header"));
+        return;
+    }
+
+    const auto version = static_cast<quint8>(datagram[PduVersionOffset]);
+    if (version != DisVersion) {
+        warnings->append(QStringLiteral("DIS version %1 does not match expected DIS%2")
+                             .arg(version)
+                             .arg(DisVersion));
+    }
+
+    const auto exerciseId = static_cast<quint8>(datagram[PduExerciseIdOffset]);
+    if (exerciseId != config.exerciseId) {
+        warnings->append(QStringLiteral("exercise ID %1 does not match configured exercise %2")
+                             .arg(exerciseId)
+                             .arg(config.exerciseId));
+    }
+
+    const auto family = static_cast<quint8>(datagram[PduFamilyOffset]);
+    if (family != SimManagementFamily) {
+        warnings->append(QStringLiteral("PDU family %1 is not Simulation Management family %2")
+                             .arg(family)
+                             .arg(SimManagementFamily));
+    }
+
+    const quint16 declaredLength = readU16(datagram, PduLengthOffset);
+    if (declaredLength != datagram.size()) {
+        warnings->append(QStringLiteral("header length %1 does not match datagram size %2")
+                             .arg(declaredLength)
+                             .arg(datagram.size()));
+    }
+
+    const auto pduType = static_cast<quint8>(datagram[PduTypeOffset]);
+    const int minimumLength = minimumPduLength(pduType);
+    if (minimumLength == 0) {
+        warnings->append(QStringLiteral("PDU type %1 is not handled by DISPatch").arg(pduType));
+    } else if (datagram.size() < minimumLength) {
+        warnings->append(QStringLiteral("%1 PDU is %2 bytes; expected at least %3")
+                             .arg(pduTypeName(pduType))
+                             .arg(datagram.size())
+                             .arg(minimumLength));
+    }
+}
+
+auto incomingResponseWarnings(const QByteArray &datagram,
+                              const DisConfig &config,
+                              const EntityId &configuredTarget,
+                              bool requestIdKnown) -> QStringList
+{
+    QStringList warnings;
+    addCommonDatagramWarnings(datagram, config, &warnings);
+    if (datagram.size() < DisHeaderLength) {
+        return warnings;
+    }
+
+    const auto pduType = static_cast<quint8>(datagram[PduTypeOffset]);
+    if (!isResponsePduType(pduType)) {
+        warnings.append(QStringLiteral("%1 is not an expected federate response PDU")
+                            .arg(pduTypeName(pduType)));
+        return warnings;
+    }
+
+    if (datagram.size() >= TargetEntityOffset + EntityIdByteLength) {
+        const EntityId target = readEntityId(datagram, TargetEntityOffset);
+        if (!entityIdsMatch(target, config.managerId)) {
+            warnings.append(QStringLiteral("response target %1 does not match manager ID %2")
+                                .arg(entityIdString(target), entityIdString(config.managerId)));
+        }
+
+        const EntityId origin = readEntityId(datagram, OriginEntityOffset);
+        if (configuredTarget.entity != BroadcastEntityIdValue
+            && !entityIdsMatch(origin, configuredTarget)) {
+            warnings.append(QStringLiteral("response origin %1 does not match configured target ID %2")
+                                .arg(entityIdString(origin), entityIdString(configuredTarget)));
+        }
+    }
+
+    const quint32 requestId = requestIdFromResponse(datagram, pduType);
+    if (requestId == 0) {
+        warnings.append(QStringLiteral("response request ID could not be decoded"));
+    } else if (!requestIdKnown) {
+        warnings.append(QStringLiteral("response request ID %1 does not match a request sent in this session")
+                            .arg(requestId));
+    }
+
+    return warnings;
+}
+
+auto dummyRequestWarnings(const QByteArray &datagram,
+                          const DisConfig &config,
+                          const EntityId &federateId) -> QStringList
+{
+    QStringList warnings;
+    addCommonDatagramWarnings(datagram, config, &warnings);
+    if (datagram.size() < DisHeaderLength) {
+        return warnings;
+    }
+
+    const auto pduType = static_cast<quint8>(datagram[PduTypeOffset]);
+    if (!isRequestPduType(pduType)) {
+        warnings.append(QStringLiteral("%1 is not a Simulation Management request PDU")
+                            .arg(pduTypeName(pduType)));
+        return warnings;
+    }
+
+    if (datagram.size() >= TargetEntityOffset + EntityIdByteLength) {
+        const EntityId receivingEntity = readEntityId(datagram, TargetEntityOffset);
+        if (!entityIdsMatch(receivingEntity, federateId)) {
+            warnings.append(QStringLiteral("request target %1 does not match dummy federate ID %2")
+                                .arg(entityIdString(receivingEntity), entityIdString(federateId)));
+        }
+    }
+
+    return warnings;
+}
+
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -913,10 +1069,30 @@ void MainWindow::readDatagrams()
 {
     while (socket_->hasPendingDatagrams()) {
         QByteArray datagram;
-        datagram.resize(static_cast<int>(socket_->pendingDatagramSize()));
+        const qint64 pendingSize = socket_->pendingDatagramSize();
+        if (pendingSize < 0) {
+            appendLog(QStringLiteral("Could not determine pending datagram size: %1").arg(socket_->errorString()),
+                      LogLevel::Warn);
+            return;
+        }
+
+        datagram.resize(static_cast<int>(pendingSize));
         QHostAddress sender;
         quint16 senderPort = 0;
-        socket_->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        const qint64 bytesRead = socket_->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        if (bytesRead < 0) {
+            appendLog(QStringLiteral("Failed to read datagram from listen socket: %1").arg(socket_->errorString()),
+                      LogLevel::Warn);
+            continue;
+        }
+        if (bytesRead != datagram.size()) {
+            appendLog(QStringLiteral("Read %1 of %2 bytes from %3")
+                          .arg(bytesRead)
+                          .arg(datagram.size())
+                          .arg(peerString(sender, senderPort)),
+                      LogLevel::Warn);
+            datagram.resize(static_cast<int>(bytesRead));
+        }
         recordResponse(datagram, sender, senderPort);
     }
 }
@@ -925,10 +1101,33 @@ void MainWindow::readDummyFederateDatagrams()
 {
     while (dummyFederateSocket_->hasPendingDatagrams()) {
         QByteArray datagram;
-        datagram.resize(static_cast<int>(dummyFederateSocket_->pendingDatagramSize()));
+        const qint64 pendingSize = dummyFederateSocket_->pendingDatagramSize();
+        if (pendingSize < 0) {
+            appendLog(QStringLiteral("Dummy federate could not determine pending datagram size: %1")
+                          .arg(dummyFederateSocket_->errorString()),
+                      LogLevel::Warn);
+            return;
+        }
+
+        datagram.resize(static_cast<int>(pendingSize));
         QHostAddress sender;
         quint16 senderPort = 0;
-        dummyFederateSocket_->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        const qint64 bytesRead =
+            dummyFederateSocket_->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        if (bytesRead < 0) {
+            appendLog(QStringLiteral("Dummy federate failed to read datagram: %1")
+                          .arg(dummyFederateSocket_->errorString()),
+                      LogLevel::Warn);
+            continue;
+        }
+        if (bytesRead != datagram.size()) {
+            appendLog(QStringLiteral("Dummy federate read %1 of %2 bytes from %3")
+                          .arg(bytesRead)
+                          .arg(datagram.size())
+                          .arg(peerString(sender, senderPort)),
+                      LogLevel::Warn);
+            datagram.resize(static_cast<int>(bytesRead));
+        }
         appendMessageRow(datagram, sender, senderPort, QStringLiteral("Test Rx"));
         respondFromDummyFederate(datagram, sender, senderPort);
     }
@@ -936,18 +1135,59 @@ void MainWindow::readDummyFederateDatagrams()
 
 void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHostAddress &sender, quint16 senderPort)
 {
-    if (datagram.size() < MinRequestPduLength || static_cast<quint8>(datagram[PduFamilyOffset]) != SimManagementFamily) {
+    bool configOk = false;
+    const auto config = currentConfig(&configOk);
+    const EntityId federateId = currentTestFederateId();
+    if (configOk) {
+        const QStringList warnings = dummyRequestWarnings(datagram, config, federateId);
+        if (!warnings.isEmpty()) {
+            appendLog(QStringLiteral("Dummy federate received suspicious datagram from %1 (%2 bytes): %3")
+                          .arg(peerString(sender, senderPort))
+                          .arg(datagram.size())
+                          .arg(warnings.join(QStringLiteral("; "))),
+                      LogLevel::Warn);
+        }
+    }
+
+    if (datagram.size() < MinRequestPduLength) {
+        appendLog(QStringLiteral("Dummy federate ignored datagram from %1 because it is only %2 bytes")
+                      .arg(peerString(sender, senderPort))
+                      .arg(datagram.size()),
+                  LogLevel::Warn);
+        return;
+    }
+
+    if (static_cast<quint8>(datagram[PduFamilyOffset]) != SimManagementFamily) {
+        appendLog(QStringLiteral("Dummy federate ignored %1 byte datagram from %2 because PDU family %3 is not %4")
+                      .arg(datagram.size())
+                      .arg(peerString(sender, senderPort))
+                      .arg(static_cast<quint8>(datagram[PduFamilyOffset]))
+                      .arg(SimManagementFamily),
+                  LogLevel::Warn);
         return;
     }
 
     const auto pduType = static_cast<PduType>(static_cast<quint8>(datagram[PduTypeOffset]));
     if (pduType != StartResumePdu && pduType != StopFreezePdu && pduType != ActionRequestPdu) {
+        appendLog(QStringLiteral("Dummy federate ignored %1 from %2 because it is not a request PDU")
+                      .arg(pduTypeName(static_cast<quint8>(pduType)), peerString(sender, senderPort)),
+                  LogLevel::Warn);
+        return;
+    }
+
+    const int minimumLength = minimumPduLength(static_cast<quint8>(pduType));
+    if (minimumLength > 0 && datagram.size() < minimumLength) {
+        appendLog(QStringLiteral("Dummy federate ignored short %1 from %2: %3 bytes, expected at least %4")
+                      .arg(pduTypeName(static_cast<quint8>(pduType)))
+                      .arg(peerString(sender, senderPort))
+                      .arg(datagram.size())
+                      .arg(minimumLength),
+                  LogLevel::Warn);
         return;
     }
 
     const quint32 requestId = requestIdFromResponse(datagram, static_cast<quint8>(pduType));
     const EntityId receivingEntity = readEntityId(datagram, TargetEntityOffset);
-    const EntityId federateId = currentTestFederateId();
     if (!entityIdsMatch(receivingEntity, federateId)) {
         appendLog(QStringLiteral("Dummy federate ignored %1 request %2 for entity %3; configured as %4")
                       .arg(pduTypeName(static_cast<quint8>(pduType)))
@@ -966,8 +1206,6 @@ void MainWindow::respondFromDummyFederate(const QByteArray &datagram, const QHos
     const QByteArray response = pduType == ActionRequestPdu
         ? makeActionResponsePdu(responseConfig, requestId)
         : makeAcknowledgePdu(responseConfig, requestId, pduType);
-    bool configOk = false;
-    const auto config = currentConfig(&configOk);
     const QHostAddress responseAddress =
         configOk && config.destinationAddress.isMulticast() ? config.destinationAddress : sender;
     const quint16 responsePort =
@@ -1030,6 +1268,20 @@ void MainWindow::recordResponse(const QByteArray &datagram, const QHostAddress &
     const quint8 pduType =
         datagram.size() > PduTypeOffset ? static_cast<quint8>(datagram[PduTypeOffset]) : 0;
     const quint32 requestId = requestIdFromResponse(datagram, pduType);
+    bool configOk = false;
+    const auto config = currentConfig(&configOk);
+    if (configOk) {
+        const QStringList warnings =
+            incomingResponseWarnings(datagram, config, currentTargetId(), requestStates_.contains(requestId));
+        if (!warnings.isEmpty()) {
+            appendLog(QStringLiteral("Received suspicious datagram from %1 (%2 bytes): %3")
+                          .arg(peerString(sender, senderPort))
+                          .arg(datagram.size())
+                          .arg(warnings.join(QStringLiteral("; "))),
+                      LogLevel::Warn);
+        }
+    }
+
     QString matchedState;
     if (requestStates_.contains(requestId)) {
         matchedState = QStringLiteral(" for %1").arg(requestStates_.value(requestId));
