@@ -107,11 +107,14 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *stateGroup = new QGroupBox(QStringLiteral("Simulation Commands"), central);
     auto *stateLayout = new QGridLayout(stateGroup);
-    addStateButton(stateLayout, QStringLiteral("Initialize"), SimulationCommand::Initialize, 0, 0);
-    addStateButton(stateLayout, QStringLiteral("Start"), SimulationCommand::Start, 0, 1);
-    addStateButton(stateLayout, QStringLiteral("Pause"), SimulationCommand::Pause, 0, 2);
-    addStateButton(stateLayout, QStringLiteral("Stop"), SimulationCommand::Stop, 1, 0);
-    addStateButton(stateLayout, QStringLiteral("Reset"), SimulationCommand::Reset, 1, 1);
+    addStateButton(stateLayout, QStringLiteral("Initialize"), SimulationCommand::Initialize, 0, 0, 3);
+    addStateButton(stateLayout, QStringLiteral("Start"), SimulationCommand::Start, 0, 3, 3);
+    addStateButton(stateLayout, QStringLiteral("Pause"), SimulationCommand::Pause, 1, 0, 2);
+    addStateButton(stateLayout, QStringLiteral("Stop"), SimulationCommand::Stop, 1, 2, 2);
+    addStateButton(stateLayout, QStringLiteral("Reset"), SimulationCommand::Reset, 1, 4, 2);
+    for (int column = 0; column < 6; ++column) {
+        stateLayout->setColumnStretch(column, 1);
+    }
 
     auto *disGroup = new QGroupBox(QStringLiteral("DIS Identity"), central);
     auto *disLayout = new QGridLayout(disGroup);
@@ -581,12 +584,17 @@ void MainWindow::updateDummyFederateMulticastGroup(const QHostAddress &group)
     joinedDummyFederateMulticastInterface_ = interface;
 }
 
-void MainWindow::addStateButton(QGridLayout *layout, const QString &label, SimulationCommand command, int row, int column)
+void MainWindow::addStateButton(QGridLayout *layout,
+                                const QString &label,
+                                SimulationCommand command,
+                                int row,
+                                int column,
+                                int columnSpan)
 {
     auto *button = new QPushButton(label, this);
     button->setMinimumHeight(StateButtonMinimumHeight);
     connect(button, &QPushButton::clicked, this, [this, command]() -> void { sendStateCommand(command); });
-    layout->addWidget(button, row, column);
+    layout->addWidget(button, row, column, 1, columnSpan);
 }
 
 auto MainWindow::currentConfig(bool *configOk) const -> DisConfig
@@ -875,13 +883,15 @@ void MainWindow::sendStateCommand(SimulationCommand command)
     requestStates_[requestId] = commandName(command);
     QString detail;
     if (command == SimulationCommand::Start) {
-        if (config.startUseLiteralZero) {
-            detail = QStringLiteral(", clock times literal zero");
-        } else {
-            detail = QStringLiteral(", real-world +%1s, simulation +%2s")
-                         .arg(config.startRealWorldTimeOffsetSeconds)
-                         .arg(config.startSimulationTimeOffsetSeconds);
-        }
+        const QString realWorldTime =
+            config.startUseLiteralZero && config.startRealWorldTimeOffsetSeconds == 0
+            ? QStringLiteral("literal zero")
+            : QStringLiteral("+%1s").arg(config.startRealWorldTimeOffsetSeconds);
+        const QString simulationTime =
+            config.startUseLiteralZero && config.startSimulationTimeOffsetSeconds == 0
+            ? QStringLiteral("literal zero")
+            : QStringLiteral("+%1s").arg(config.startSimulationTimeOffsetSeconds);
+        detail = QStringLiteral(", real-world %1, simulation %2").arg(realWorldTime, simulationTime);
     } else if (command == SimulationCommand::Pause
                || command == SimulationCommand::Stop
                || command == SimulationCommand::Reset) {

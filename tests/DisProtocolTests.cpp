@@ -46,11 +46,9 @@ TEST_CASE("Start/Resume PDU uses DIS header fields and entity IDs")
     CHECK(readU32(pdu, StartResumeRequestIdOffset) == 0x01020304U);
 }
 
-TEST_CASE("Start/Resume PDU can use literal zero clock times")
+TEST_CASE("Start/Resume PDU can use literal zero clock times for zero offsets")
 {
     DisConfig config = testConfig();
-    config.startRealWorldTimeOffsetSeconds = 10;
-    config.startSimulationTimeOffsetSeconds = 20;
     config.startUseLiteralZero = true;
 
     const QByteArray pdu = makeStartResumePdu(config, 1);
@@ -60,6 +58,20 @@ TEST_CASE("Start/Resume PDU can use literal zero clock times")
     CHECK(readU32(pdu, StartResumeRealWorldTimePastHourOffset) == 0);
     CHECK(readU32(pdu, StartResumeSimulationHourOffset) == 0);
     CHECK(readU32(pdu, StartResumeSimulationTimePastHourOffset) == 0);
+}
+
+TEST_CASE("Start/Resume PDU keeps non-zero offsets when useLiteralZero is enabled")
+{
+    DisConfig config = testConfig();
+    config.startRealWorldTimeOffsetSeconds = 10;
+    config.startSimulationTimeOffsetSeconds = 20;
+    config.startUseLiteralZero = true;
+
+    const QByteArray pdu = makeStartResumePdu(config, 1);
+
+    REQUIRE(pdu.size() == StartResumePduLength);
+    CHECK(readU32(pdu, StartResumeRealWorldHourOffset) > 0);
+    CHECK(readU32(pdu, StartResumeSimulationHourOffset) > 0);
 }
 
 TEST_CASE("Stop/Freeze commands use their standard reasons")

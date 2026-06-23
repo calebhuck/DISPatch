@@ -57,8 +57,9 @@ Set command defaults in `DISPatch_config.json` so they match the simulation
 component interface control document. The Start command supports
 `realWorldTimeOffsetSeconds` and `simulationTimeOffsetSeconds`, which default
 to `0` and schedule the Start/Resume PDU clock-time fields relative to the
-current UTC time. Set `useLiteralZero` to `true` in the `start` block when the
-Start/Resume PDU should write literal zero clock-time values instead.
+current UTC time. Set `useLiteralZero` to `true` in the `start` block when a
+zero Start/Resume offset should be written as a literal zero clock-time value
+instead of the current UTC time.
 
 ## Configuration
 

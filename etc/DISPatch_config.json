@@ -31,9 +31,9 @@
       "actionId": 39
     },
     "start": {
-      "realWorldTimeOffsetSeconds": 0,
+      "realWorldTimeOffsetSeconds": 2,
       "simulationTimeOffsetSeconds": 0,
-      "useLiteralZero": false
+      "useLiteralZero": true
     },
     "pause": {
       "frozenBehavior": 0

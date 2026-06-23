@@ -57,7 +57,12 @@ private:
     void clearDummyFederateMulticastGroup();
     auto updateListenMulticastGroup() -> bool;
     void updateDummyFederateMulticastGroup(const QHostAddress &group);
-    void addStateButton(QGridLayout *layout, const QString &label, SimulationCommand command, int row, int column);
+    void addStateButton(QGridLayout *layout,
+                        const QString &label,
+                        SimulationCommand command,
+                        int row,
+                        int column,
+                        int columnSpan);
     auto currentConfig(bool *configOk = nullptr) const -> DisConfig;
     [[nodiscard]] auto currentTestFederateId() const -> EntityId;
     [[nodiscard]] auto currentTargetId() const -> EntityId;
