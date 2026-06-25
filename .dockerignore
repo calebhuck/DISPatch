@@ -1,0 +1,10 @@
+.git
+.agents
+.codex
+.idea
+/build
+/build-*
+/cmake-build-*
+*.log
+DISPatch.log
+DISPatch_messages.log

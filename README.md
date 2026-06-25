@@ -40,6 +40,23 @@ same CMake variable:
 conan build . -o tests=True
 ```
 
+## Release Tarball
+
+Build a RHEL 8 compatible release tarball with Docker or Podman:
+
+```bash
+docker build -f Dockerfile.release --output type=local,dest=dist .
+```
+
+The Dockerfile defaults to Rocky Linux 8.10 because the public UBI 8 repos do
+not include all Qt build dependencies without extra Red Hat entitlements. To
+build from a subscribed RHEL-derived image instead, override `BASE_IMAGE`.
+
+The output is `dist/DISPatch-<version>-rhel8-<arch>.tar.gz` plus a SHA-256
+checksum. The tarball contains the DISPatch executable, the default config
+file, Conan-deployed runtime libraries, Qt plugins, and a `run-dispatch`
+launcher that sets `LD_LIBRARY_PATH` and `QT_PLUGIN_PATH`.
+
 ## DIS6 Command Mapping
 
 The application uses standard DIS6 Simulation Management PDU layouts:

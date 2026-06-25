@@ -191,6 +191,13 @@ auto dummyRequestWarnings(const QByteArray &datagram,
     return warnings;
 }
 
+auto committedSpinBoxValue(const QSpinBox *spinBox) -> int
+{
+    // Commit in-progress edits so live validation sees typed values before focus changes.
+    const_cast<QSpinBox *>(spinBox)->interpretText();
+    return spinBox->value();
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -291,7 +298,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *disGroup = new QGroupBox(QStringLiteral("DIS Identity"), central);
     auto *disLayout = new QGridLayout(disGroup);
-    exerciseSpin_ = makeSmallSpinBox(disGroup, 1, MaxExerciseId, appConfig_.exerciseId);
+    exerciseSpin_ = makeSmallSpinBox(disGroup, 0, MaxExerciseId, appConfig_.exerciseId);
     managerSiteSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.site);
     managerApplicationSpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.application);
     managerEntitySpin_ = makeSmallSpinBox(disGroup, 0, BroadcastEntityIdValue, appConfig_.managerId.entity);
@@ -775,14 +782,14 @@ auto MainWindow::currentConfig(bool *configOk) const -> DisConfig
     DisConfig config;
     const bool destinationOk = parseConfigAddress(destinationAddressEdit_->text(), &config.destinationAddress);
     const bool listenOk = parseConfigAddress(listenAddressEdit_->text(), &config.listenAddress);
-    config.destinationPort = static_cast<quint16>(destinationPortSpin_->value());
-    config.listenPort = static_cast<quint16>(listenPortSpin_->value());
-    config.exerciseId = static_cast<quint8>(exerciseSpin_->value());
+    config.destinationPort = static_cast<quint16>(committedSpinBoxValue(destinationPortSpin_));
+    config.listenPort = static_cast<quint16>(committedSpinBoxValue(listenPortSpin_));
+    config.exerciseId = static_cast<quint8>(committedSpinBoxValue(exerciseSpin_));
     config.managerId = makeEntityId(managerSiteSpin_, managerApplicationSpin_, managerEntitySpin_);
     config.targetId = makeEntityId(targetSiteSpin_, targetApplicationSpin_, targetEntitySpin_);
     config.initializeActionId = appConfig_.initializeActionId;
-    config.startRealWorldTimeOffsetSeconds = startRealWorldTimeOffsetSpin_->value();
-    config.startSimulationTimeOffsetSeconds = startSimulationTimeOffsetSpin_->value();
+    config.startRealWorldTimeOffsetSeconds = committedSpinBoxValue(startRealWorldTimeOffsetSpin_);
+    config.startSimulationTimeOffsetSeconds = committedSpinBoxValue(startSimulationTimeOffsetSpin_);
     config.startUseLiteralZero = startUseLiteralZeroCheck_->isChecked();
     config.pauseFrozenBehavior = appConfig_.pauseFrozenBehavior;
     config.stopFrozenBehavior = appConfig_.stopFrozenBehavior;
@@ -808,9 +815,9 @@ auto MainWindow::currentTargetId() const -> EntityId
 
 auto MainWindow::makeEntityId(const QSpinBox *site, const QSpinBox *application, const QSpinBox *entity) -> EntityId
 {
-    return EntityId{static_cast<quint16>(site->value()),
-                    static_cast<quint16>(application->value()),
-                    static_cast<quint16>(entity->value())};
+    return EntityId{static_cast<quint16>(committedSpinBoxValue(site)),
+                    static_cast<quint16>(committedSpinBoxValue(application)),
+                    static_cast<quint16>(committedSpinBoxValue(entity))};
 }
 
 void MainWindow::setTargetIdControls(const EntityId &entityId)

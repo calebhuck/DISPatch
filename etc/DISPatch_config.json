@@ -14,7 +14,7 @@
     "multicastLoopback": true
   },
   "dis": {
-    "exerciseId": 1,
+    "exerciseId": 0,
     "managerId": {
       "site": 1,
       "application": 1,

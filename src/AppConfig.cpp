@@ -615,7 +615,7 @@ auto loadAppConfig(const QString &path, QStringList *warnings) -> AppConfig
     config.exerciseId = static_cast<quint8>(readInt(dis,
                                                     QStringLiteral("exerciseId"),
                                                     config.exerciseId,
-                                                    1,
+                                                    0,
                                                     MaxExerciseId,
                                                     warnings,
                                                     QStringLiteral("config.dis")));

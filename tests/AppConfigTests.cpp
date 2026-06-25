@@ -92,6 +92,23 @@ TEST_CASE("Config accepts added theme names")
     CHECK(dracula.theme == Theme::Dracula);
 }
 
+TEST_CASE("Config accepts exercise ID zero")
+{
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = writeConfig(directory, R"json({
+  "dis": {
+    "exerciseId": 0
+  }
+})json");
+
+    QStringList warnings;
+    const AppConfig config = loadAppConfig(path, &warnings);
+
+    CHECK(warnings.isEmpty());
+    CHECK(config.exerciseId == 0);
+}
+
 TEST_CASE("Config accepts stop/freeze reason labels")
 {
     CHECK(stopFreezeReasonLabel(RecessReason) == QStringLiteral("Recess"));

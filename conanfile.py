@@ -18,6 +18,7 @@ class DISPatchConan(ConanFile):
         "etc/*",
         "include/*",
         "main.cpp",
+        "resources/*",
         "src/*",
         "tests/*",
     )
