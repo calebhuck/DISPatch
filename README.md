@@ -70,11 +70,11 @@ Response PDUs are matched back to the request ID sent by the manager.
 
 Set command defaults in `dispatch.json` so they match the simulation
 component interface control document. The Start command supports
-`realWorldTimeOffsetSeconds` and `simulationTimeOffsetSeconds`, which default
-to `0` and schedule the Start/Resume PDU clock-time fields relative to the
-current UTC time. Set `useLiteralZero` to `true` in the `start` block when a
-zero Start/Resume offset should be written as a literal zero clock-time value
-instead of the current UTC time.
+The Start command supports `realWorldTimeOffsetSeconds` and
+`simulationTimeOffsetSeconds`, which both default to `0`. Real-world time is
+encoded as an absolute DIS timestamp using the current UTC time plus
+`realWorldTimeOffsetSeconds`. Simulation time is encoded as a relative DIS
+timestamp starting from zero plus `simulationTimeOffsetSeconds`.
 
 The `frozenBehavior` values in the `pause`, `stop`, and `reset` blocks are
 written directly into the Stop/Freeze PDU Frozen Behavior field. DISPatch does

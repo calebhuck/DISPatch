@@ -21,16 +21,16 @@ auto writeConfig(QTemporaryDir &directory, const QByteArray &json) -> QString
 
 } // namespace
 
-TEST_CASE("Config loads Start useLiteralZero and offsets")
+TEST_CASE("Config loads Start offsets")
 {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
+
     const QString path = writeConfig(directory, R"json({
   "commands": {
     "start": {
       "realWorldTimeOffsetSeconds": 12,
-      "simulationTimeOffsetSeconds": 34,
-      "useLiteralZero": true
+      "simulationTimeOffsetSeconds": 34
     }
   }
 })json");
@@ -42,27 +42,6 @@ TEST_CASE("Config loads Start useLiteralZero and offsets")
     CHECK(config.configPath == path);
     CHECK(config.startRealWorldTimeOffsetSeconds == 12);
     CHECK(config.startSimulationTimeOffsetSeconds == 34);
-    CHECK(config.startUseLiteralZero);
-}
-
-TEST_CASE("Config warns and falls back for invalid Start useLiteralZero")
-{
-    QTemporaryDir directory;
-    REQUIRE(directory.isValid());
-    const QString path = writeConfig(directory, R"json({
-  "commands": {
-    "start": {
-      "useLiteralZero": "yes"
-    }
-  }
-})json");
-
-    QStringList warnings;
-    const AppConfig config = loadAppConfig(path, &warnings);
-
-    CHECK_FALSE(config.startUseLiteralZero);
-    REQUIRE_FALSE(warnings.isEmpty());
-    CHECK(warnings.join(QLatin1Char('\n')).contains(QStringLiteral("config.commands.start.useLiteralZero")));
 }
 
 TEST_CASE("Config accepts added theme names")

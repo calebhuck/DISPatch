@@ -36,8 +36,7 @@
     },
     "start": {
       "realWorldTimeOffsetSeconds": 0,
-      "simulationTimeOffsetSeconds": 0,
-      "useLiteralZero": true
+      "simulationTimeOffsetSeconds": 0
     },
     "pause": {
       "frozenBehavior": 0

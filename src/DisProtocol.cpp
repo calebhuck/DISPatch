@@ -44,36 +44,57 @@ auto makeHeader(const DisConfig &config,
     return bytes;
 }
 
-void appendClockTime(QDataStream &out, int offsetSeconds)
+void appendAbsoluteClockTime(QDataStream &out, int offsetSeconds)
 {
     const QDateTime time = QDateTime::currentDateTimeUtc().addSecs(offsetSeconds);
     const qint64 secondsSinceEpoch = time.toSecsSinceEpoch();
-    const auto hour = static_cast<quint32>(secondsSinceEpoch / SecondsPerHour);
+
+    const auto hour =
+        static_cast<quint32>(secondsSinceEpoch / SecondsPerHour);
+
     const quint64 millisecondsPastHour =
-        static_cast<quint64>((secondsSinceEpoch % SecondsPerHour) * MillisecondsPerSecond
-                             + time.time().msec());
+        static_cast<quint64>(
+            (secondsSinceEpoch % SecondsPerHour) * MillisecondsPerSecond
+            + time.time().msec());
+
+    const quint64 timeUnits =
+        (millisecondsPastHour * DisTimeUnitsPerHour)
+        / MillisecondsPerHour;
+
+    // DIS timestamp:
+    // bits 31..1 = time within hour
+    // bit 0      = 1 for absolute time
     const auto timePastHour =
-        static_cast<quint32>((millisecondsPastHour * DisTimeUnitsPerHour) / MillisecondsPerHour);
+        static_cast<quint32>(
+            (timeUnits << 1U) | DisTimestampAbsoluteBit);
+
     out << hour;
     out << timePastHour;
 }
 
-void appendLiteralZeroClockTime(QDataStream &out)
+void appendRelativeClockTime(QDataStream &out, int offsetSeconds)
 {
-    out << static_cast<quint32>(0);
-    out << static_cast<quint32>(0);
+    const quint64 totalMilliseconds =
+        static_cast<quint64>(offsetSeconds) * MillisecondsPerSecond;
+
+    const auto hour =
+        static_cast<quint32>(
+            totalMilliseconds / MillisecondsPerHour);
+
+    const quint64 millisecondsPastHour =
+        totalMilliseconds % MillisecondsPerHour;
+
+    const quint64 timeUnits =
+        (millisecondsPastHour * DisTimeUnitsPerHour)
+        / MillisecondsPerHour;
+
+    // LSB remains zero => relative timestamp.
+    const auto timePastHour =
+        static_cast<quint32>(timeUnits << 1U);
+
+    out << hour;
+    out << timePastHour;
 }
-
-void appendStartClockTime(QDataStream &out, int offsetSeconds, bool useLiteralZero)
-{
-    if (useLiteralZero && offsetSeconds == 0) {
-        appendLiteralZeroClockTime(out);
-        return;
-    }
-
-    appendClockTime(out, offsetSeconds);
-}
-
 } // namespace
 
 auto commandName(SimulationCommand command) -> QString
@@ -194,8 +215,8 @@ auto makeStartResumePdu(const DisConfig &config, quint32 requestId) -> QByteArra
 
     writeEntityId(out, config.managerId);
     writeEntityId(out, config.targetId);
-    appendStartClockTime(out, config.startRealWorldTimeOffsetSeconds, config.startUseLiteralZero);
-    appendStartClockTime(out, config.startSimulationTimeOffsetSeconds, config.startUseLiteralZero);
+    appendAbsoluteClockTime(out, config.startRealWorldTimeOffsetSeconds);
+    appendRelativeClockTime(out, config.startSimulationTimeOffsetSeconds);
     out << requestId;
 
     return bytes;
@@ -210,7 +231,7 @@ auto makeStopFreezePdu(const DisConfig &config, quint32 requestId, SimulationCom
 
     writeEntityId(out, config.managerId);
     writeEntityId(out, config.targetId);
-    appendClockTime(out, 0);
+    appendAbsoluteClockTime(out, 0);
     out << stopFreezeReasonForCommand(command);
     out << frozenBehaviorForCommand(config, command);
     out << static_cast<quint16>(0);

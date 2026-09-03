@@ -148,7 +148,6 @@ private:
     QVBoxLayout *heartbeatLayout_ = nullptr;
     QSpinBox *startRealWorldTimeOffsetSpin_ = nullptr;
     QSpinBox *startSimulationTimeOffsetSpin_ = nullptr;
-    QCheckBox *startUseLiteralZeroCheck_ = nullptr;
     EntityId savedTargetIdBeforeBroadcast_;
     QLabel *dummyFederateStatusLabel_ = nullptr;
     QList<TestFederateControls> testFederateControls_;

@@ -110,8 +110,7 @@ auto actionConfigKeys() -> const QStringList &
 auto startConfigKeys() -> const QStringList &
 {
     static const QStringList keys{QStringLiteral("realWorldTimeOffsetSeconds"),
-                                  QStringLiteral("simulationTimeOffsetSeconds"),
-                                  QStringLiteral("useLiteralZero")};
+                                  QStringLiteral("simulationTimeOffsetSeconds")};
     return keys;
 }
 
@@ -869,11 +868,6 @@ auto loadAppConfigFile(const QString &path, QStringList *warnings, bool validate
                                                       MaxTimeOffsetSeconds,
                                                       warnings,
                                                       QStringLiteral("config.commands.start"));
-    config.startUseLiteralZero = readBool(start,
-                                          QStringLiteral("useLiteralZero"),
-                                          config.startUseLiteralZero,
-                                          warnings,
-                                          QStringLiteral("config.commands.start"));
 
     const QJsonObject pause = readObject(commands, QStringLiteral("pause"), warnings, QStringLiteral("config.commands"));
     warnUnknownKeys(pause, stopFreezeConfigKeys(), warnings, QStringLiteral("config.commands.pause"));
